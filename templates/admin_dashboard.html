@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Quiz System{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h1>👨‍💼 Admin Dashboard</h1>
+        <button onclick="logout()" class="btn btn-danger">Logout</button>
+    </div>
+
+    <div class="dashboard-content">
+        <!-- Quick Actions -->
+        <div class="card">
+            <h2>Quick Actions</h2>
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="showSection('teams')">Manage Teams</button>
+                <button class="btn btn-primary" onclick="showSection('sessions')">Manage Sessions</button>
+                <button class="btn btn-primary" onclick="showSection('qm-users')">Create Quiz Master</button>
+            </div>
+        </div>
+
+        <!-- Teams Section -->
+        <div id="teams-section" class="section" style="display:none;">
+            <div class="card">
+                <h2>Teams Management</h2>
+                <button class="btn btn-success" onclick="showTeamForm()">+ Add New Team</button>
+
+                <div id="teamForm" class="form-container" style="display:none;">
+                    <h3>Add New Team</h3>
+                    <form id="addTeamForm">
+                        <div class="form-group">
+                            <label>Team Name</label>
+                            <input type="text" id="teamName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Team Code</label>
+                            <input type="text" id="teamCode" required style="text-transform:uppercase;">
+                        </div>
+                        <div class="form-group">
+                            <label>Seat Order</label>
+                            <input type="number" id="seatOrder">
+                        </div>
+                        <button type="submit" class="btn btn-success">Create Team</button>
+                        <button type="button" class="btn btn-secondary" onclick="hideTeamForm()">Cancel</button>
+                    </form>
+                </div>
+
+                <div id="teamsList"></div>
+            </div>
+        </div>
+
+        <!-- Sessions Section -->
+        <div id="sessions-section" class="section" style="display:none;">
+            <div class="card">
+                <h2>Sessions Management</h2>
+                <button class="btn btn-success" onclick="showSessionForm()">+ Create New Session</button>
+
+                <div id="sessionForm" class="form-container" style="display:none;">
+                    <h3>Create New Session</h3>
+                    <form id="addSessionForm">
+                        <div class="form-group">
+                            <label>Session Name</label>
+                            <input type="text" id="sessionName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Banner Text</label>
+                            <input type="text" id="bannerText" value="AISMOC 2026 QUIZ">
+                        </div>
+                        <button type="submit" class="btn btn-success">Create Session</button>
+                        <button type="button" class="btn btn-secondary" onclick="hideSessionForm()">Cancel</button>
+                    </form>
+                </div>
+
+                <div id="sessionsList"></div>
+            </div>
+        </div>
+
+        <!-- Quiz Master Users Section -->
+        <div id="qm-users-section" class="section" style="display:none;">
+            <div class="card">
+                <h2>Create Quiz Master User</h2>
+                <form id="addQMForm">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="qmUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="qmPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Create Quiz Master</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .dashboard-header h1 {
+        margin: 0;
+        color: #2c3e50;
+    }
+
+    .dashboard-content {
+        min-height: 500px;
+    }
+
+    .action-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 20px;
+    }
+
+    .form-container {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 5px;
+        margin: 20px 0;
+    }
+
+    .section {
+        animation: fadeIn 0.3s;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+</style>
+
+<script>
+function showSection(section) {
+    // Hide all sections
+    document.querySelectorAll('.section').forEach(s => s.style.display = 'none');
+
+    // Show selected section
+    document.getElementById(section + '-section').style.display = 'block';
+
+    // Load data for section
+    if (section === 'teams') {
+        loadTeams();
+    } else if (section === 'sessions') {
+        loadSessions();
+    }
+}
+
+function showTeamForm() {
+    document.getElementById('teamForm').style.display = 'block';
+}
+
+function hideTeamForm() {
+    document.getElementById('teamForm').style.display = 'none';
+    document.getElementById('addTeamForm').reset();
+}
+
+function showSessionForm() {
+    document.getElementById('sessionForm').style.display = 'block';
+}
+
+function hideSessionForm() {
+    document.getElementById('sessionForm').style.display = 'none';
+    document.getElementById('addSessionForm').reset();
+}
+
+async function loadTeams() {
+    try {
+        const teams = await apiRequest('/admin/teams');
+        const listDiv = document.getElementById('teamsList');
+
+        if (teams.length === 0) {
+            listDiv.innerHTML = '<p>No teams yet. Create your first team!</p>';
+            return;
+        }
+
+        let html = '<table><thead><tr><th>Name</th><th>Code</th><th>Seat Order</th><th>Status</th></tr></thead><tbody>';
+        teams.forEach(team => {
+            html += `<tr>
+                <td>${team.name}</td>
+                <td><strong>${team.code}</strong></td>
+                <td>${team.seat_order || '-'}</td>
+                <td>${team.is_active ? '✓ Active' : '✗ Inactive'}</td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        listDiv.innerHTML = html;
+    } catch (error) {
+        showAlert('Error loading teams: ' + error.message, 'error');
+    }
+}
+
+async function loadSessions() {
+    try {
+        const sessions = await apiRequest('/admin/sessions');
+        const listDiv = document.getElementById('sessionsList');
+
+        if (sessions.length === 0) {
+            listDiv.innerHTML = '<p>No sessions yet. Create your first session!</p>';
+            return;
+        }
+
+        let html = '<table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
+        sessions.forEach(session => {
+            html += `<tr>
+                <td>${session.name}</td>
+                <td>${session.status}</td>
+                <td>${new Date(session.created_at).toLocaleDateString()}</td>
+                <td>
+                    <button class="btn btn-primary btn-small" onclick="viewSession(${session.id})">View</button>
+                </td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        listDiv.innerHTML = html;
+    } catch (error) {
+        showAlert('Error loading sessions: ' + error.message, 'error');
+    }
+}
+
+// Form submissions
+document.getElementById('addTeamForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+        await apiRequest('/admin/teams', {
+            method: 'POST',
+            body: JSON.stringify({
+                name: document.getElementById('teamName').value,
+                code: document.getElementById('teamCode').value.toUpperCase(),
+                seat_order: parseInt(document.getElementById('seatOrder').value) || null
+            })
+        });
+
+        showAlert('Team created successfully!', 'success');
+        hideTeamForm();
+        loadTeams();
+    } catch (error) {
+        showAlert('Error creating team: ' + error.message, 'error');
+    }
+});
+
+document.getElementById('addSessionForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+        await apiRequest('/admin/sessions', {
+            method: 'POST',
+            body: JSON.stringify({
+                name: document.getElementById('sessionName').value,
+                banner_text: document.getElementById('bannerText').value
+            })
+        });
+
+        showAlert('Session created successfully!', 'success');
+        hideSessionForm();
+        loadSessions();
+    } catch (error) {
+        showAlert('Error creating session: ' + error.message, 'error');
+    }
+});
+
+document.getElementById('addQMForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+        await apiRequest('/admin/users/quiz-master', {
+            method: 'POST',
+            body: JSON.stringify({
+                username: document.getElementById('qmUsername').value,
+                password: document.getElementById('qmPassword').value
+            })
+        });
+
+        showAlert('Quiz Master created successfully!', 'success');
+        document.getElementById('addQMForm').reset();
+    } catch (error) {
+        showAlert('Error creating Quiz Master: ' + error.message, 'error');
+    }
+});
+
+function viewSession(sessionId) {
+    window.location.href = `/admin/session/${sessionId}`;
+}
+
+function logout() {
+    clearAuthToken();
+    window.location.href = '/';
+}
+
+// Check authentication on load
+window.addEventListener('load', () => {
+    const token = getAuthToken();
+    if (!token) {
+        window.location.href = '/admin/login';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Team Interface - Quiz System{% endblock %}
+
+{% block content %}
+<div class="team-interface">
+    <div class="team-header">
+        <h1 id="teamName">Team</h1>
+        <button onclick="logout()" class="btn btn-danger btn-small">Logout</button>
+    </div>
+
+    <div class="score-display">
+        <h2>Your Score</h2>
+        <div id="teamScore" class="score-value">0</div>
+    </div>
+
+    <div class="timer-display">
+        <div id="timerDisplay" class="timer">--:--</div>
+    </div>
+
+    <div class="buzzer-container">
+        <button id="buzzerButton" class="buzzer-button" onclick="pressBuzzer()">
+            <span class="buzzer-text">BUZZ!</span>
+        </button>
+        <div id="buzzerStatus" class="buzzer-status"></div>
+    </div>
+
+    <div id="placementDisplay" class="placement-display"></div>
+</div>
+
+<style>
+    .team-interface {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        text-align: center;
+    }
+
+    .team-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .team-header h1 {
+        margin: 0;
+        color: #2c3e50;
+        font-size: 1.8rem;
+    }
+
+    .btn-small {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+    }
+
+    .score-display {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+
+    .score-display h2 {
+        margin-bottom: 15px;
+        color: #2c3e50;
+    }
+
+    .score-value {
+        font-size: 4rem;
+        font-weight: bold;
+        color: #3498db;
+    }
+
+    .timer-display {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+
+    .timer {
+        font-size: 3rem;
+        font-weight: bold;
+        color: #e74c3c;
+        font-family: 'Courier New', monospace;
+    }
+
+    .buzzer-container {
+        margin: 40px 0;
+    }
+
+    .buzzer-button {
+        width: 280px;
+        height: 280px;
+        border-radius: 50%;
+        background: radial-gradient(circle, #e74c3c 0%, #c0392b 100%);
+        border: 8px solid #922b21;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        cursor: pointer;
+        transition: all 0.1s;
+        position: relative;
+    }
+
+    .buzzer-button:active {
+        transform: scale(0.95);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .buzzer-button:disabled {
+        background: #95a5a6;
+        border-color: #7f8c8d;
+        cursor: not-allowed;
+    }
+
+    .buzzer-text {
+        color: white;
+        font-size: 3rem;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .buzzer-status {
+        margin-top: 20px;
+        font-size: 1.2rem;
+        min-height: 30px;
+    }
+
+    .placement-display {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 30px;
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #2c3e50;
+        min-height: 60px;
+    }
+
+    .placement-1st {
+        color: #f39c12;
+        animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+
+    /* Mobile Optimization */
+    @media (max-width: 768px) {
+        .team-interface {
+            padding: 10px;
+        }
+
+        .buzzer-button {
+            width: 240px;
+            height: 240px;
+        }
+
+        .buzzer-text {
+            font-size: 2.5rem;
+        }
+
+        .score-value {
+            font-size: 3rem;
+        }
+    }
+
+    /* Landscape mode for mobile */
+    @media (max-height: 600px) and (orientation: landscape) {
+        .score-display,
+        .timer-display {
+            display: inline-block;
+            width: 45%;
+            margin: 0 2%;
+        }
+
+        .buzzer-button {
+            width: 180px;
+            height: 180px;
+        }
+
+        .buzzer-text {
+            font-size: 2rem;
+        }
+    }
+</style>
+
+<script>
+let ws = null;
+let sessionId = null;
+let deviceId = null;
+
+async function init() {
+    try {
+        // Get current session
+        const data = await apiRequest('/team/sessions/current');
+        sessionId = data.session_id;
+        document.getElementById('teamName').textContent = data.team_name;
+        document.getElementById('teamScore').textContent = data.score;
+
+        // Generate device ID
+        deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
+
+        // Connect to WebSocket
+        connectWebSocket();
+    } catch (error) {
+        showAlert('Error loading session: ' + error.message, 'error');
+    }
+}
+
+function connectWebSocket() {
+    ws = new WSConnection(`/ws/team/${sessionId}`);
+
+    ws.on('open', () => {
+        console.log('WebSocket connected');
+    });
+
+    ws.on('timer.tick', (data) => {
+        const timerDisplay = document.getElementById('timerDisplay');
+        timerDisplay.textContent = formatTime(data.remaining_ms);
+
+        // Enable buzzer when timer is running
+        const buzzerButton = document.getElementById('buzzerButton');
+        if (data.state === 'counting') {
+            buzzerButton.disabled = false;
+        } else {
+            buzzerButton.disabled = true;
+        }
+    });
+
+    ws.on('score.update', (data) => {
+        // Update score if it's for this team
+        document.getElementById('teamScore').textContent = data.total;
+    });
+
+    ws.on('buzzer.status', (data) => {
+        const statusDiv = document.getElementById('buzzerStatus');
+        if (data.locked) {
+            statusDiv.textContent = 'Buzzer Locked';
+            statusDiv.style.color = '#e74c3c';
+            document.getElementById('buzzerButton').disabled = true;
+        } else {
+            statusDiv.textContent = 'Ready';
+            statusDiv.style.color = '#2ecc71';
+        }
+    });
+
+    ws.on('placement', (data) => {
+        const placementDiv = document.getElementById('placementDisplay');
+        if (data.placement) {
+            const suffix = data.placement === 1 ? 'st' : data.placement === 2 ? 'nd' : data.placement === 3 ? 'rd' : 'th';
+            placementDiv.textContent = `You buzzed ${data.placement}${suffix}!`;
+            placementDiv.className = 'placement-display';
+            if (data.placement === 1) {
+                placementDiv.classList.add('placement-1st');
+            }
+        } else {
+            placementDiv.textContent = '';
+        }
+    });
+
+    ws.on('buzz.confirmed', (data) => {
+        const statusDiv = document.getElementById('buzzerStatus');
+        statusDiv.textContent = '✓ Buzz Registered!';
+        statusDiv.style.color = '#2ecc71';
+        document.getElementById('buzzerButton').disabled = true;
+    });
+
+    ws.connect();
+}
+
+async function pressBuzzer() {
+    try {
+        // Send buzz via WebSocket
+        if (ws && ws.ws && ws.ws.readyState === WebSocket.OPEN) {
+            ws.send({
+                action: 'buzz',
+                device_id: deviceId
+            });
+        }
+
+        // Disable button immediately to prevent double-clicks
+        document.getElementById('buzzerButton').disabled = true;
+        document.getElementById('buzzerStatus').textContent = 'Buzzing...';
+    } catch (error) {
+        showAlert('Error sending buzz: ' + error.message, 'error');
+    }
+}
+
+function logout() {
+    if (ws) {
+        ws.close();
+    }
+    clearAuthToken();
+    window.location.href = '/';
+}
+
+// Initialize on load
+window.addEventListener('load', init);
+</script>
+{% endblock %}

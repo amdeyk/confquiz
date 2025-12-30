@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Login - Quiz System{% endblock %}
+
+{% block content %}
+<div class="login-page">
+    <div class="login-container">
+        <h1>👨‍💼 Admin Login</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <p class="back-link"><a href="/">← Back to Home</a></p>
+    </div>
+</div>
+
+<style>
+    .login-page {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 90vh;
+    }
+
+    .login-container {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .login-container h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #2c3e50;
+    }
+
+    .back-link {
+        text-align: center;
+        margin-top: 20px;
+    }
+
+    .back-link a {
+        color: #3498db;
+        text-decoration: none;
+    }
+
+    .back-link a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (!response.ok) {
+            throw new Error('Login failed');
+        }
+
+        const data = await response.json();
+        setAuthToken(data.access_token);
+
+        // Redirect based on role
+        if (data.role === 'admin') {
+            window.location.href = '/admin/dashboard';
+        } else if (data.role === 'quiz_master') {
+            window.location.href = '/qm/dashboard';
+        }
+    } catch (error) {
+        showAlert('Login failed. Please check your credentials.', 'error');
+    }
+});
+</script>
+{% endblock %}

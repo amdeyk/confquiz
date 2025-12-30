@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz System - Home{% endblock %}
+
+{% block content %}
+<div class="landing-page">
+    <div class="header">
+        <h1>🎯 Quiz System</h1>
+        <p class="subtitle">Interactive Quiz Platform with Real-time Buzzer</p>
+    </div>
+
+    <div class="login-options">
+        <div class="login-card">
+            <h2>👨‍💼 Admin / Quiz Master</h2>
+            <p>Manage sessions, control quiz flow, and scoring</p>
+            <button onclick="location.href='/admin/login'" class="btn btn-primary">Admin Login</button>
+            <button onclick="location.href='/qm/login'" class="btn btn-secondary">Quiz Master Login</button>
+        </div>
+
+        <div class="login-card">
+            <h2>👥 Team Login</h2>
+            <p>Join the quiz with your team code</p>
+            <button onclick="location.href='/team/login'" class="btn btn-primary">Team Login</button>
+        </div>
+
+        <div class="login-card">
+            <h2>📺 Main Display</h2>
+            <p>Large screen display for audience</p>
+            <button onclick="location.href='/display'" class="btn btn-info">Open Display</button>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Quiz System v1.0 | Powered by FastAPI</p>
+    </div>
+</div>
+
+<style>
+    .landing-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        text-align: center;
+    }
+
+    .header {
+        margin-bottom: 50px;
+    }
+
+    .header h1 {
+        font-size: 3rem;
+        color: #2c3e50;
+        margin-bottom: 10px;
+    }
+
+    .subtitle {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+    }
+
+    .login-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-bottom: 50px;
+    }
+
+    .login-card {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        transition: transform 0.3s;
+    }
+
+    .login-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .login-card h2 {
+        margin-bottom: 15px;
+        color: #34495e;
+    }
+
+    .login-card p {
+        color: #7f8c8d;
+        margin-bottom: 25px;
+    }
+
+    .btn {
+        padding: 12px 30px;
+        border: none;
+        border-radius: 5px;
+        font-size: 1rem;
+        cursor: pointer;
+        margin: 5px;
+        transition: all 0.3s;
+    }
+
+    .btn-primary {
+        background: #3498db;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #2980b9;
+    }
+
+    .btn-secondary {
+        background: #95a5a6;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #7f8c8d;
+    }
+
+    .btn-info {
+        background: #1abc9c;
+        color: white;
+        font-size: 1.1rem;
+        padding: 15px 40px;
+    }
+
+    .btn-info:hover {
+        background: #16a085;
+    }
+
+    .footer {
+        margin-top: 50px;
+        color: #95a5a6;
+    }
+</style>
+{% endblock %}

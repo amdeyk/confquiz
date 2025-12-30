@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+
+{% block title %}Quiz Master Dashboard - Quiz System{% endblock %}
+
+{% block content %}
+<div class="qm-dashboard">
+    <div class="qm-header">
+        <h1>🎯 Quiz Master Control Panel</h1>
+        <button onclick="logout()" class="btn btn-danger">Logout</button>
+    </div>
+
+    <!-- Session Selection -->
+    <div class="card">
+        <h2>Select Active Session</h2>
+        <select id="sessionSelect" class="form-control" onchange="loadSession()">
+            <option value="">-- Select Session --</option>
+        </select>
+    </div>
+
+    <div id="controlPanel" style="display:none;">
+        <!-- Slide Controls -->
+        <div class="card">
+            <h2>Slide Navigation</h2>
+            <div class="control-buttons">
+                <button class="btn btn-warning" onclick="prevSlide()">← Previous</button>
+                <button class="btn btn-primary" onclick="nextSlide()">Next →</button>
+                <button class="btn btn-success" onclick="revealAnswer()">Reveal Answer</button>
+            </div>
+        </div>
+
+        <!-- Timer Controls -->
+        <div class="card">
+            <h2>Timer Control</h2>
+            <div class="timer-display">
+                <div id="timerValue">--:--</div>
+            </div>
+            <div class="control-buttons">
+                <div class="form-group">
+                    <label>Duration (seconds)</label>
+                    <input type="number" id="timerDuration" value="30" min="5" max="300">
+                </div>
+                <button class="btn btn-success" onclick="startTimer()">Start Timer</button>
+                <button class="btn btn-warning" onclick="pauseTimer()">Pause</button>
+                <button class="btn btn-danger" onclick="resetTimer()">Reset</button>
+            </div>
+        </div>
+
+        <!-- Buzzer Controls -->
+        <div class="card">
+            <h2>Buzzer Control</h2>
+            <div class="control-buttons">
+                <button id="buzzerLockBtn" class="btn btn-success" onclick="toggleBuzzerLock()">Unlock Buzzers</button>
+                <button class="btn btn-warning" onclick="clearBuzzerQueue()">Clear Queue</button>
+            </div>
+            <div id="buzzerQueue" class="buzzer-queue"></div>
+        </div>
+
+        <!-- Score Management -->
+        <div class="card">
+            <h2>Score Management</h2>
+            <div id="scoreControls"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .qm-dashboard {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .qm-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .qm-header h1 {
+        margin: 0;
+        color: #2c3e50;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 1rem;
+    }
+
+    .control-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        margin-top: 15px;
+    }
+
+    .timer-display {
+        text-align: center;
+        margin: 20px 0;
+    }
+
+    #timerValue {
+        font-size: 4rem;
+        font-weight: bold;
+        color: #e74c3c;
+        font-family: 'Courier New', monospace;
+    }
+
+    .buzzer-queue {
+        margin-top: 20px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .buzzer-item {
+        padding: 10px;
+        margin: 5px 0;
+        background: #ecf0f1;
+        border-radius: 5px;
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .buzzer-item.first {
+        background: #f39c12;
+        color: white;
+        font-weight: bold;
+    }
+
+    .score-team {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        margin: 10px 0;
+        background: #ecf0f1;
+        border-radius: 5px;
+    }
+
+    .score-team-info {
+        flex: 1;
+    }
+
+    .score-team-controls button {
+        margin: 0 5px;
+    }
+
+    @media (max-width: 768px) {
+        .control-buttons {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<script>
+let sessionId = null;
+let ws = null;
+let buzzerLocked = false;
+
+async function init() {
+    try {
+        const sessions = await apiRequest('/qm/sessions/live');
+        const select = document.getElementById('sessionSelect');
+
+        sessions.forEach(session => {
+            const option = document.createElement('option');
+            option.value = session.id;
+            option.textContent = `${session.name} (${session.status})`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        showAlert('Error loading sessions: ' + error.message, 'error');
+    }
+}
+
+async function loadSession() {
+    sessionId = document.getElementById('sessionSelect').value;
+    if (!sessionId) {
+        document.getElementById('controlPanel').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('controlPanel').style.display = 'block';
+
+    // Connect to WebSocket
+    connectWebSocket();
+
+    // Load teams for scoring
+    loadScoreControls();
+}
+
+function connectWebSocket() {
+    ws = new WSConnection(`/ws/qm/${sessionId}`);
+
+    ws.on('timer.tick', (data) => {
+        document.getElementById('timerValue').textContent = formatTime(data.remaining_ms);
+    });
+
+    ws.on('buzzer.queue', (data) => {
+        displayBuzzerQueue(data.queue);
+    });
+
+    ws.connect();
+}
+
+async function nextSlide() {
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/slide/next`, { method: 'POST' });
+        showAlert('Moved to next slide', 'success');
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function prevSlide() {
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/slide/prev`, { method: 'POST' });
+        showAlert('Moved to previous slide', 'success');
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function revealAnswer() {
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/slide/reveal`, { method: 'POST' });
+        showAlert('Answer revealed', 'success');
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function startTimer() {
+    const duration = parseInt(document.getElementById('timerDuration').value);
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/timer/start`, {
+            method: 'POST',
+            body: JSON.stringify({ duration_ms: duration * 1000 })
+        });
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function pauseTimer() {
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/timer/pause`, { method: 'POST' });
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function resetTimer() {
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/timer/reset`, { method: 'POST' });
+        document.getElementById('timerValue').textContent = '--:--';
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function toggleBuzzerLock() {
+    buzzerLocked = !buzzerLocked;
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock`, {
+            method: 'POST',
+            body: JSON.stringify({ locked: buzzerLocked })
+        });
+        const btn = document.getElementById('buzzerLockBtn');
+        btn.textContent = buzzerLocked ? 'Unlock Buzzers' : 'Lock Buzzers';
+        btn.className = buzzerLocked ? 'btn btn-success' : 'btn btn-danger';
+    } catch (error) {
+        showAlert('Error: ' + error.message, 'error');
+    }
+}
+
+async function clearBuzzerQueue() {
+    await toggleBuzzerLock();
+    document.getElementById('buzzerQueue').innerHTML = '';
+}
+
+function displayBuzzerQueue(queue) {
+    const div = document.getElementById('buzzerQueue');
+    if (!queue || queue.length === 0) {
+        div.innerHTML = '<p>No buzzes yet</p>';
+        return;
+    }
+
+    div.innerHTML = '';
+    queue.forEach(item => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'buzzer-item' + (item.placement === 1 ? ' first' : '');
+        itemDiv.innerHTML = `
+            <span>${item.placement}. ${item.team_name}</span>
+            <span>${new Date(item.timestamp * 1000).toLocaleTimeString()}</span>
+        `;
+        div.appendChild(itemDiv);
+    });
+}
+
+async function loadScoreControls() {
+    // This would load teams and create score adjustment controls
+    // Simplified for now
+    document.getElementById('scoreControls').innerHTML = '<p>Score controls will appear here once teams are loaded</p>';
+}
+
+function logout() {
+    if (ws) ws.close();
+    clearAuthToken();
+    window.location.href = '/';
+}
+
+window.addEventListener('load', () => {
+    const token = getAuthToken();
+    if (!token) {
+        window.location.href = '/qm/login';
+    }
+    init();
+});
+</script>
+{% endblock %}

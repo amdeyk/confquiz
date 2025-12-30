@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Main Display - Quiz System{% endblock %}
+
+{% block content %}
+<div class="main-display">
+    <!-- Banner -->
+    <div class="banner">
+        <h1 id="bannerText">AISMOC 2026 QUIZ</h1>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="display-grid">
+        <!-- Slide Display (Left) -->
+        <div class="slide-area">
+            <div id="slideContainer" class="slide-container">
+                <div class="no-slide">No slide loaded</div>
+            </div>
+        </div>
+
+        <!-- Side Panel (Right) -->
+        <div class="side-panel">
+            <!-- Timer -->
+            <div class="timer-card">
+                <h3>Timer</h3>
+                <div id="timerDisplay" class="timer-value">--:--</div>
+                <div id="timerStatus" class="timer-status"></div>
+            </div>
+
+            <!-- Scoreboard -->
+            <div class="scoreboard-card">
+                <h3>Scores</h3>
+                <table id="scoreboardTable">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Team</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreboardBody">
+                        <tr>
+                            <td colspan="3">Loading...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Buzzer Queue -->
+            <div class="buzzer-card">
+                <h3>Buzzer Queue</h3>
+                <div id="buzzerQueue">
+                    <div class="no-buzzes">No buzzes yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    body {
+        background: #000;
+    }
+
+    .main-display {
+        width: 100vw;
+        height: 100vh;
+        padding: 0;
+        margin: 0;
+        overflow: hidden;
+    }
+
+    .banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        text-align: center;
+    }
+
+    .banner h1 {
+        color: white;
+        font-size: 2.5rem;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .display-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 20px;
+        padding: 20px;
+        height: calc(100vh - 100px);
+    }
+
+    .slide-area {
+        background: white;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .slide-container {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .slide-container img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+
+    .no-slide {
+        color: #95a5a6;
+        font-size: 2rem;
+    }
+
+    .side-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .timer-card,
+    .scoreboard-card,
+    .buzzer-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+    }
+
+    .timer-card {
+        text-align: center;
+    }
+
+    .timer-card h3 {
+        margin-bottom: 10px;
+        color: #2c3e50;
+    }
+
+    .timer-value {
+        font-size: 4rem;
+        font-weight: bold;
+        color: #e74c3c;
+        font-family: 'Courier New', monospace;
+    }
+
+    .timer-status {
+        font-size: 1.2rem;
+        color: #7f8c8d;
+        margin-top: 10px;
+    }
+
+    .scoreboard-card {
+        flex: 1;
+        overflow-y: auto;
+    }
+
+    .scoreboard-card h3 {
+        margin-bottom: 15px;
+        color: #2c3e50;
+    }
+
+    #scoreboardTable {
+        width: 100%;
+        font-size: 0.95rem;
+    }
+
+    #scoreboardTable th {
+        background: #ecf0f1;
+        padding: 10px;
+        text-align: left;
+    }
+
+    #scoreboardTable td {
+        padding: 10px;
+    }
+
+    .current-team {
+        background: #fff3cd;
+        font-weight: bold;
+    }
+
+    .buzzer-card {
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .buzzer-card h3 {
+        margin-bottom: 15px;
+        color: #2c3e50;
+    }
+
+    .buzzer-item {
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        background: #ecf0f1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .buzzer-item.first {
+        background: #f39c12;
+        color: white;
+        font-weight: bold;
+    }
+
+    .no-buzzes {
+        color: #95a5a6;
+        text-align: center;
+        padding: 20px;
+    }
+
+    /* Mobile/Tablet - redirect message */
+    @media (max-width: 1024px) {
+        .main-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .banner,
+        .display-grid {
+            display: none;
+        }
+
+        .main-display::before {
+            content: "⚠️ Main Display\A\APlease open this page on a laptop or desktop computer.\A\AThis screen requires a larger display.";
+            white-space: pre-wrap;
+            color: white;
+            font-size: 1.5rem;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 40px;
+            border-radius: 10px;
+        }
+    }
+</style>
+
+<script>
+let ws = null;
+let sessionId = null;
+
+async function init() {
+    // Get session ID from URL or default to 1
+    const urlParams = new URLSearchParams(window.location.search);
+    sessionId = urlParams.get('session') || 1;
+
+    try {
+        // Load initial snapshot
+        const snapshot = await apiRequest(`/display/sessions/${sessionId}/snapshot`);
+        updateDisplay(snapshot);
+
+        // Connect to WebSocket
+        connectWebSocket();
+    } catch (error) {
+        showAlert('Error loading display: ' + error.message, 'error');
+    }
+}
+
+function updateDisplay(snapshot) {
+    // Update banner
+    document.getElementById('bannerText').textContent = snapshot.banner_text;
+
+    // Update slide
+    const slideContainer = document.getElementById('slideContainer');
+    if (snapshot.current_slide) {
+        slideContainer.innerHTML = `<img src="${snapshot.current_slide.png_path}" alt="Slide">`;
+    } else {
+        slideContainer.innerHTML = '<div class="no-slide">No slide loaded</div>';
+    }
+
+    // Update scoreboard
+    updateScoreboard(snapshot.scores);
+
+    // Update timer
+    if (snapshot.timer_state) {
+        document.getElementById('timerDisplay').textContent = formatTime(snapshot.timer_state.remaining_ms);
+        document.getElementById('timerStatus').textContent = snapshot.timer_state.state;
+    }
+
+    // Update buzzer queue
+    updateBuzzerQueue(snapshot.buzzer_queue);
+}
+
+function updateScoreboard(scores) {
+    const tbody = document.getElementById('scoreboardBody');
+    tbody.innerHTML = '';
+
+    if (!scores || scores.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3">No teams</td></tr>';
+        return;
+    }
+
+    scores.forEach((team, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${team.team_name}</td>
+            <td>${team.total}</td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function updateBuzzerQueue(queue) {
+    const buzzerDiv = document.getElementById('buzzerQueue');
+
+    if (!queue || queue.length === 0) {
+        buzzerDiv.innerHTML = '<div class="no-buzzes">No buzzes yet</div>';
+        return;
+    }
+
+    buzzerDiv.innerHTML = '';
+    queue.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'buzzer-item' + (item.placement === 1 ? ' first' : '');
+        div.innerHTML = `
+            <span>${item.placement}. ${item.team_name}</span>
+            <span>${new Date(item.timestamp * 1000).toLocaleTimeString()}</span>
+        `;
+        buzzerDiv.appendChild(div);
+    });
+}
+
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/display/${sessionId}`;
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        console.log('WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+
+            switch (data.event) {
+                case 'slide.update':
+                    const slideContainer = document.getElementById('slideContainer');
+                    if (data.slide) {
+                        slideContainer.innerHTML = `<img src="${data.slide.png_path}" alt="Slide">`;
+                    }
+                    break;
+
+                case 'timer.tick':
+                    document.getElementById('timerDisplay').textContent = formatTime(data.remaining_ms);
+                    document.getElementById('timerStatus').textContent = data.state;
+                    break;
+
+                case 'score.update':
+                    // Reload scores
+                    apiRequest(`/display/sessions/${sessionId}/snapshot`)
+                        .then(snapshot => updateScoreboard(snapshot.scores));
+                    break;
+
+                case 'buzzer.update':
+                case 'buzzer.results':
+                    apiRequest(`/display/sessions/${sessionId}/snapshot`)
+                        .then(snapshot => updateBuzzerQueue(snapshot.buzzer_queue));
+                    break;
+            }
+        } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+        }
+    };
+
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket closed, reconnecting...');
+        setTimeout(connectWebSocket, 3000);
+    };
+}
+
+// Initialize on load
+window.addEventListener('load', init);
+</script>
+{% endblock %}
