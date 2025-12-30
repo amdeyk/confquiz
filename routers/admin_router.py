@@ -10,6 +10,7 @@ from schemas import (
     TeamCreate, TeamResponse, SessionCreate, SessionResponse,
     RoundCreate, RoundResponse, SessionUpdate, TeamUpdate
 )
+from config import settings
 
 router = APIRouter()
 
@@ -86,9 +87,12 @@ async def create_session(
     current_user: User = Depends(get_current_admin)
 ):
     """Create a new quiz session"""
+    # Use conference_name from settings if banner_text not provided
+    banner = session.banner_text or settings.conference_name
+
     new_session = Session(
         name=session.name,
-        banner_text=session.banner_text,
+        banner_text=banner,
         ppt_native_allowed=session.ppt_native_allowed,
         status="draft"
     )

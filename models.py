@@ -37,7 +37,7 @@ class Session(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     status = Column(String, default="draft")  # 'draft', 'live', 'ended'
-    banner_text = Column(String, default="AISMOC 2026 QUIZ")
+    banner_text = Column(String, nullable=True)  # Read from settings, not hardcoded
     current_round_id = Column(Integer, ForeignKey("rounds.id"), nullable=True)
     current_slide_id = Column(Integer, ForeignKey("slides.id"), nullable=True)
     mode = Column(String, default="question")  # 'question', 'answer', 'native'

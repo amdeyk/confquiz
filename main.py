@@ -80,49 +80,73 @@ app.include_router(ws_router.router, prefix="/ws", tags=["WebSocket"])
 @app.get("/")
 async def root(request: Request):
     """Landing page"""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/admin/login")
 async def admin_login_page(request: Request):
     """Admin login page"""
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse("admin_login.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/qm/login")
 async def qm_login_page(request: Request):
     """Quiz Master login page"""
-    return templates.TemplateResponse("admin_login.html", {"request": request})
+    return templates.TemplateResponse("admin_login.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/team/login")
 async def team_login_page(request: Request):
     """Team login page"""
-    return templates.TemplateResponse("team_login.html", {"request": request})
+    return templates.TemplateResponse("team_login.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/admin/dashboard")
 async def admin_dashboard_page(request: Request):
     """Admin dashboard page"""
-    return templates.TemplateResponse("admin_dashboard.html", {"request": request})
+    return templates.TemplateResponse("admin_dashboard.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/qm/dashboard")
 async def qm_dashboard_page(request: Request):
     """Quiz Master dashboard page"""
-    return templates.TemplateResponse("qm_dashboard.html", {"request": request})
+    return templates.TemplateResponse("qm_dashboard.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/team/interface")
 async def team_interface_page(request: Request):
     """Team interface page"""
-    return templates.TemplateResponse("team_interface.html", {"request": request})
+    return templates.TemplateResponse("team_interface.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/display")
 async def display_page(request: Request):
     """Main display screen page"""
-    return templates.TemplateResponse("display.html", {"request": request})
+    return templates.TemplateResponse("display.html", {
+        "request": request,
+        "settings": settings
+    })
 
 
 @app.get("/health")

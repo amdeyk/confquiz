@@ -1,35 +1,53 @@
+# =========================
 # Python
+# =========================
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+*.pyd
 *.so
-.Python
-env/
+*.egg-info/
+.eggs/
+.pytest_cache/
+
+# =========================
+# Virtual Environments
+# =========================
 venv/
-ENV/
-.venv
+.env/
+.env.*
+!.env.example
 
-# Database
+# =========================
+# Databases
+# =========================
 *.db
-*.db-journal
-*.db-wal
+*.sqlite3
 
-# Media files
-media/
-uploads/
+# =========================
+# Media / Uploads (runtime)
+# =========================
+media/uploads/
+media/slides/
+media/thumbs/
 
-# Environment
-.env
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
+# =========================
 # Logs
+# =========================
 *.log
 
-# OS
+# =========================
+# OS / Editor
+# =========================
 .DS_Store
 Thumbs.db
+.idea/
+.vscode/
+
+# =========================
+# Secrets & Keys
+# =========================
+*.pem
+*.key
+*.crt
+*.env.production

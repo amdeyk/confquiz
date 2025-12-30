@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import AsyncSessionLocal, init_db
 from models import User, Team, Session, Round, TeamSession, Score
 from auth import get_password_hash
+from config import settings
 
 
 async def create_test_data():
@@ -59,13 +60,15 @@ async def create_test_data():
 
         print("\n3. Creating test session...")
 
-        result = await db.execute(select(Session).where(Session.name == "Test Quiz Session"))
+        session_name = f"{settings.conference_name} - Quiz Competition" if settings.conference_name else "Test Quiz Session"
+
+        result = await db.execute(select(Session).where(Session.name == session_name))
         if result.scalar_one_or_none():
-            print("   ⚠️  Session 'Test Quiz Session' already exists")
+            print(f"   ⚠️  Session '{session_name}' already exists")
         else:
             session = Session(
-                name="Test Quiz Session",
-                banner_text="Test Quiz - Demo Session",
+                name=session_name,
+                banner_text=settings.conference_name or "Quiz Competition",
                 status="live"
             )
             db.add(session)
@@ -151,7 +154,7 @@ async def create_test_data():
         print("  - Team Epsilon (Code: EPSILON)")
         print()
         print("Session created:")
-        print("  - Test Quiz Session (Status: live)")
+        print(f"  - {session_name} (Status: live)")
         print("  - 3 Rounds configured")
         print("  - All teams assigned")
         print()

@@ -29,7 +29,16 @@ class Settings(BaseSettings):
 
     # Admin Default
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
-    admin_password: str = Field(default="admin123", alias="ADMIN_PASSWORD")
+    admin_password: str = Field(default="changeme", alias="ADMIN_PASSWORD")
+
+    # Conference/Event Details (must be set in .env)
+    conference_name: str = Field(alias="CONFERENCE_NAME")
+    conference_full_name: str = Field(default="", alias="CONFERENCE_FULL_NAME")
+    conference_dates: str = Field(default="", alias="CONFERENCE_DATES")
+    conference_venue: str = Field(default="", alias="CONFERENCE_VENUE")
+    conference_chairperson: str = Field(default="", alias="CONFERENCE_CHAIRPERSON")
+    conference_organizer: str = Field(default="", alias="CONFERENCE_ORGANIZER")
+    conference_scientific_chair: str = Field(default="", alias="CONFERENCE_SCIENTIFIC_CHAIR")
 
     class Config:
         env_file = ".env"

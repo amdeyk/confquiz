@@ -1,0 +1,58 @@
+<!-- Conference Header Component -->
+<div class="conference-header">
+    <div class="conference-logo">
+        <h1>45th AISMOC 2026</h1>
+        <p>All India Steel Medical Officers' Conference</p>
+    </div>
+    <div class="conference-nav">
+        <a href="https://login.aismoc2026dgp.com" target="_blank" class="nav-link">
+            ← Back to Main Portal
+        </a>
+    </div>
+</div>
+
+<style>
+    .conference-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 15px 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: white;
+        margin-bottom: 20px;
+        border-radius: 10px;
+    }
+
+    .conference-logo h1 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+
+    .conference-logo p {
+        margin: 5px 0 0 0;
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+
+    .nav-link {
+        color: white;
+        text-decoration: none;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 20px;
+        transition: background 0.3s;
+    }
+
+    .nav-link:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    @media (max-width: 768px) {
+        .conference-header {
+            flex-direction: column;
+            text-align: center;
+            gap: 15px;
+        }
+    }
+</style>

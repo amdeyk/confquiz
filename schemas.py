@@ -56,7 +56,7 @@ class TeamResponse(BaseModel):
 
 class SessionCreate(BaseModel):
     name: str
-    banner_text: Optional[str] = "AISMOC 2026 QUIZ"
+    banner_text: Optional[str] = None  # Will use conference_name from settings if not provided
     ppt_native_allowed: Optional[bool] = False
 
 

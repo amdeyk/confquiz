@@ -5,8 +5,16 @@
 {% block content %}
 <div class="landing-page">
     <div class="header">
-        <h1>🎯 Quiz System</h1>
-        <p class="subtitle">Interactive Quiz Platform with Real-time Buzzer</p>
+        <h1>🎯 Quiz Competition</h1>
+        {% if settings.conference_name %}
+        <h2 class="conference-name">{{ settings.conference_name }}</h2>
+        {% endif %}
+        {% if settings.conference_full_name %}
+        <p class="subtitle">{{ settings.conference_full_name }}</p>
+        {% endif %}
+        {% if settings.conference_dates and settings.conference_venue %}
+        <p class="event-details">{{ settings.conference_dates }} | {{ settings.conference_venue }}</p>
+        {% endif %}
     </div>
 
     <div class="login-options">
@@ -31,7 +39,20 @@
     </div>
 
     <div class="footer">
-        <p>Quiz System v1.0 | Powered by FastAPI</p>
+        {% if settings.conference_chairperson or settings.conference_organizer or settings.conference_scientific_chair %}
+        <div class="organizers">
+            {% if settings.conference_chairperson %}
+            <p><strong>Chairperson:</strong> {{ settings.conference_chairperson }}</p>
+            {% endif %}
+            {% if settings.conference_organizer %}
+            <p><strong>Organizing Secretary:</strong> {{ settings.conference_organizer }}</p>
+            {% endif %}
+            {% if settings.conference_scientific_chair %}
+            <p><strong>Scientific Chair:</strong> {{ settings.conference_scientific_chair }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+        <p class="powered-by">Quiz System v1.0{% if settings.conference_name %} | {{ settings.conference_name }}{% endif %}</p>
     </div>
 </div>
 
@@ -48,14 +69,28 @@
     }
 
     .header h1 {
-        font-size: 3rem;
+        font-size: 2.5rem;
         color: #2c3e50;
         margin-bottom: 10px;
     }
 
+    .conference-name {
+        font-size: 2rem;
+        color: #764ba2;
+        margin: 10px 0;
+        font-weight: 600;
+    }
+
     .subtitle {
         font-size: 1.2rem;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+
+    .event-details {
+        font-size: 1rem;
         color: #7f8c8d;
+        margin-top: 10px;
     }
 
     .login-options {
@@ -128,7 +163,25 @@
 
     .footer {
         margin-top: 50px;
+        text-align: center;
+    }
+
+    .organizers {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .organizers p {
+        margin: 8px 0;
+        color: #2c3e50;
+    }
+
+    .powered-by {
         color: #95a5a6;
+        font-size: 0.9rem;
     }
 </style>
 {% endblock %}
