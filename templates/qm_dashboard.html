@@ -420,9 +420,9 @@ async function toggleBuzzerLock() {
     buzzerLocked = !buzzerLocked;
     debug('QM Dashboard: toggleBuzzerLock clicked, new state:', buzzerLocked);
     try {
-        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock`, {
-            method: 'POST',
-            body: JSON.stringify({ locked: buzzerLocked })
+        // Send locked as query parameter, not in body
+        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock?locked=${buzzerLocked}`, {
+            method: 'POST'
         });
         const btn = document.getElementById('buzzerLockBtn');
         btn.textContent = buzzerLocked ? 'Unlock Buzzers' : 'Lock Buzzers';

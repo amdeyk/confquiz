@@ -16,6 +16,7 @@
             <div class="action-buttons">
                 <button class="btn btn-primary" onclick="showSection('teams')">Manage Teams</button>
                 <button class="btn btn-primary" onclick="showSection('sessions')">Manage Sessions</button>
+                <button class="btn btn-primary" onclick="showSection('slides')">Upload Slides</button>
                 <button class="btn btn-primary" onclick="showSection('qm-users')">Create Quiz Master</button>
             </div>
         </div>
@@ -73,6 +74,34 @@
                 </div>
 
                 <div id="sessionsList"></div>
+
+                <!-- Session Management Panel -->
+                <div id="sessionManagePanel" class="form-container" style="display:none; margin-top:20px;">
+                    <h3 id="managePanelTitle">Manage Session</h3>
+
+                    <div class="form-group">
+                        <label>Session Status</label>
+                        <select id="manageSessionStatus" class="form-control">
+                            <option value="draft">🟡 Draft (Preparing)</option>
+                            <option value="live">🟢 Live (Active)</option>
+                            <option value="ended">🔴 Ended (Finished)</option>
+                        </select>
+                        <small class="text-muted">Change status to control quiz lifecycle</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Assign Teams to Session</label>
+                        <div id="teamCheckboxes" class="checkbox-group">
+                            <p class="text-muted">Loading teams...</p>
+                        </div>
+                        <small class="text-muted">Select which teams will participate in this session</small>
+                    </div>
+
+                    <div style="margin-top:20px;">
+                        <button class="btn btn-success" onclick="saveSessionSettings()">Save Changes</button>
+                        <button class="btn btn-secondary" onclick="hideManagePanel()">Cancel</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -91,6 +120,48 @@
                     </div>
                     <button type="submit" class="btn btn-success">Create Quiz Master</button>
                 </form>
+            </div>
+        </div>
+
+        <!-- Slides Management Section -->
+        <div id="slides-section" class="section" style="display:none;">
+            <div class="card">
+                <h2>Slide Upload Management</h2>
+
+                <div class="form-group">
+                    <label>Select Session</label>
+                    <select id="slideSessionSelect" onchange="loadSessionDecks()">
+                        <option value="">-- Select a session --</option>
+                    </select>
+                </div>
+
+                <div id="slideUploadArea" style="display:none;">
+                    <h3>Upload Slides</h3>
+                    <p class="text-muted">Upload PowerPoint files (.ppt or .pptx) for this session. You can upload separate question and answer decks.</p>
+
+                    <div class="upload-container">
+                        <div class="upload-box">
+                            <h4>Question Deck</h4>
+                            <form id="uploadQuestionDeckForm">
+                                <input type="file" id="questionDeckFile" accept=".ppt,.pptx" required>
+                                <button type="submit" class="btn btn-primary">Upload Question Deck</button>
+                            </form>
+                        </div>
+
+                        <div class="upload-box">
+                            <h4>Answer Deck</h4>
+                            <form id="uploadAnswerDeckForm">
+                                <input type="file" id="answerDeckFile" accept=".ppt,.pptx" required>
+                                <button type="submit" class="btn btn-primary">Upload Answer Deck</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div id="decksList" style="margin-top:30px;">
+                        <h3>Uploaded Decks</h3>
+                        <div id="decksContent"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -144,6 +215,110 @@
         from { opacity: 0; }
         to { opacity: 1; }
     }
+
+    .upload-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin: 20px 0;
+    }
+
+    .upload-box {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        border: 2px dashed #ddd;
+    }
+
+    .upload-box h4 {
+        margin-top: 0;
+        color: #2c3e50;
+    }
+
+    .upload-box input[type="file"] {
+        display: block;
+        width: 100%;
+        margin: 15px 0;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        background: white;
+    }
+
+    .text-muted {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin: 10px 0;
+    }
+
+    .deck-item {
+        background: white;
+        padding: 15px;
+        margin: 10px 0;
+        border-radius: 5px;
+        border-left: 4px solid #3498db;
+    }
+
+    .deck-item h4 {
+        margin: 0 0 10px 0;
+        color: #2c3e50;
+    }
+
+    .deck-item p {
+        margin: 5px 0;
+        color: #7f8c8d;
+        font-size: 0.9rem;
+    }
+
+    .checkbox-group {
+        background: white;
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #ddd;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .checkbox-item {
+        padding: 10px;
+        margin: 5px 0;
+        background: #f8f9fa;
+        border-radius: 5px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .checkbox-item:hover {
+        background: #e9ecef;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .checkbox-item label {
+        margin: 0;
+        cursor: pointer;
+        flex: 1;
+        font-weight: 500;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 1rem;
+    }
+
+    small.text-muted {
+        display: block;
+        margin-top: 5px;
+        font-size: 0.85rem;
+    }
 </style>
 
 <script>
@@ -159,6 +334,8 @@ function showSection(section) {
         loadTeams();
     } else if (section === 'sessions') {
         loadSessions();
+    } else if (section === 'slides') {
+        loadSlideSessions();
     }
 }
 
@@ -218,12 +395,14 @@ async function loadSessions() {
 
         let html = '<table><thead><tr><th>Name</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead><tbody>';
         sessions.forEach(session => {
+            const statusBadge = session.status === 'live' ? '🟢' : session.status === 'ended' ? '🔴' : '🟡';
             html += `<tr>
                 <td>${session.name}</td>
-                <td>${session.status}</td>
+                <td>${statusBadge} <strong>${session.status}</strong></td>
                 <td>${new Date(session.created_at).toLocaleDateString()}</td>
                 <td>
-                    <button class="btn btn-primary btn-small" onclick="viewSession(${session.id})">View</button>
+                    <button class="btn btn-primary btn-small" onclick="manageSession(${session.id}, '${session.name}', '${session.status}')">Manage</button>
+                    <button class="btn btn-secondary btn-small" onclick="viewSession(${session.id})">View</button>
                 </td>
             </tr>`;
         });
@@ -300,6 +479,232 @@ function viewSession(sessionId) {
     // Redirect to QM dashboard where session can be managed
     window.location.href = `/qm/dashboard`;
 }
+
+// ============ Session Management Functions ============
+
+let currentManagingSessionId = null;
+
+async function manageSession(sessionId, sessionName, sessionStatus) {
+    debug('Admin Dashboard: Managing session', sessionId);
+    currentManagingSessionId = sessionId;
+
+    // Show the management panel
+    document.getElementById('sessionManagePanel').style.display = 'block';
+    document.getElementById('managePanelTitle').textContent = `Manage Session: ${sessionName}`;
+
+    // Set current status
+    document.getElementById('manageSessionStatus').value = sessionStatus;
+
+    // Load teams and their assignment status
+    try {
+        // Load all teams
+        const allTeams = await apiRequest('/admin/teams');
+
+        // Load session snapshot to see which teams are assigned
+        const snapshot = await apiRequest(`/display/sessions/${sessionId}/snapshot`);
+        const assignedTeamIds = snapshot.scores ? snapshot.scores.map(s => s.team_id) : [];
+
+        // Build checkbox list
+        const container = document.getElementById('teamCheckboxes');
+        if (allTeams.length === 0) {
+            container.innerHTML = '<p class="text-muted">No teams available. Create teams first.</p>';
+            return;
+        }
+
+        let html = '';
+        allTeams.forEach(team => {
+            const isChecked = assignedTeamIds.includes(team.id) ? 'checked' : '';
+            html += `
+                <div class="checkbox-item">
+                    <input type="checkbox" id="team_${team.id}" value="${team.id}" ${isChecked}>
+                    <label for="team_${team.id}">${team.name} (${team.code})</label>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+
+        debug('Admin Dashboard: Loaded', allTeams.length, 'teams,', assignedTeamIds.length, 'assigned');
+
+    } catch (error) {
+        debugError('Admin Dashboard: Error loading session data:', error);
+        showAlert('Error loading session data: ' + error.message, 'error');
+    }
+}
+
+function hideManagePanel() {
+    document.getElementById('sessionManagePanel').style.display = 'none';
+    currentManagingSessionId = null;
+}
+
+async function saveSessionSettings() {
+    if (!currentManagingSessionId) {
+        showAlert('No session selected', 'error');
+        return;
+    }
+
+    const newStatus = document.getElementById('manageSessionStatus').value;
+
+    // Get selected team IDs
+    const checkboxes = document.querySelectorAll('#teamCheckboxes input[type="checkbox"]:checked');
+    const selectedTeamIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    debug('Admin Dashboard: Saving session settings:', {
+        sessionId: currentManagingSessionId,
+        status: newStatus,
+        teamIds: selectedTeamIds
+    });
+
+    try {
+        // Update session status
+        await apiRequest(`/admin/sessions/${currentManagingSessionId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: newStatus })
+        });
+        debug('Admin Dashboard: Session status updated to', newStatus);
+
+        // Assign teams to session
+        if (selectedTeamIds.length > 0) {
+            await apiRequest(`/admin/sessions/${currentManagingSessionId}/teams`, {
+                method: 'POST',
+                body: JSON.stringify(selectedTeamIds)
+            });
+            debug('Admin Dashboard: Teams assigned:', selectedTeamIds);
+        }
+
+        showAlert('Session settings saved successfully!', 'success');
+        hideManagePanel();
+        loadSessions(); // Reload the list to show updated status
+
+    } catch (error) {
+        debugError('Admin Dashboard: Error saving session settings:', error);
+        showAlert('Error saving settings: ' + error.message, 'error');
+    }
+}
+
+// ============ Slide Management Functions ============
+
+async function loadSlideSessions() {
+    try {
+        const sessions = await apiRequest('/admin/sessions');
+        const select = document.getElementById('slideSessionSelect');
+
+        // Clear existing options except the first one
+        select.innerHTML = '<option value="">-- Select a session --</option>';
+
+        sessions.forEach(session => {
+            const option = document.createElement('option');
+            option.value = session.id;
+            option.textContent = `${session.name} (${session.status})`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        showAlert('Error loading sessions: ' + error.message, 'error');
+    }
+}
+
+async function loadSessionDecks() {
+    const sessionId = document.getElementById('slideSessionSelect').value;
+
+    if (!sessionId) {
+        document.getElementById('slideUploadArea').style.display = 'none';
+        return;
+    }
+
+    document.getElementById('slideUploadArea').style.display = 'block';
+
+    try {
+        const decks = await apiRequest(`/admin/sessions/${sessionId}/decks`);
+        const container = document.getElementById('decksContent');
+
+        if (decks.length === 0) {
+            container.innerHTML = '<p class="text-muted">No decks uploaded yet. Upload your PowerPoint files above.</p>';
+            return;
+        }
+
+        let html = '';
+        decks.forEach(deck => {
+            html += `
+                <div class="deck-item">
+                    <h4>${deck.deck_type === 'question' ? '📊' : '✅'} ${deck.deck_type.toUpperCase()} Deck</h4>
+                    <p><strong>File:</strong> ${deck.ppt_path.split('/').pop()}</p>
+                    <p><strong>Slides:</strong> ${deck.slides ? deck.slides.length : 0} slides converted</p>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (error) {
+        showAlert('Error loading decks: ' + error.message, 'error');
+    }
+}
+
+async function uploadDeck(deckType) {
+    const sessionId = document.getElementById('slideSessionSelect').value;
+    const fileInput = document.getElementById(deckType + 'DeckFile');
+    const file = fileInput.files[0];
+
+    if (!file) {
+        showAlert('Please select a file', 'error');
+        return;
+    }
+
+    if (!sessionId) {
+        showAlert('Please select a session first', 'error');
+        return;
+    }
+
+    try {
+        showAlert(`Uploading ${deckType} deck... This may take a minute.`, 'info');
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const token = getAuthToken();
+        const response = await fetch(`${API_BASE}/admin/sessions/${sessionId}/decks?deck_type=${deckType}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+            throw new Error(error.detail || 'Upload failed');
+        }
+
+        const result = await response.json();
+        showAlert(`${deckType.charAt(0).toUpperCase() + deckType.slice(1)} deck uploaded successfully! ${result.slides.length} slides converted.`, 'success');
+
+        // Clear the file input
+        fileInput.value = '';
+
+        // Reload decks list
+        await loadSessionDecks();
+
+    } catch (error) {
+        showAlert('Error uploading deck: ' + error.message, 'error');
+    }
+}
+
+// Form submission handlers for deck uploads
+document.addEventListener('DOMContentLoaded', () => {
+    const questionForm = document.getElementById('uploadQuestionDeckForm');
+    const answerForm = document.getElementById('uploadAnswerDeckForm');
+
+    if (questionForm) {
+        questionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await uploadDeck('question');
+        });
+    }
+
+    if (answerForm) {
+        answerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await uploadDeck('answer');
+        });
+    }
+});
 
 function logout() {
     clearAuthToken();
