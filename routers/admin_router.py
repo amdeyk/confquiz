@@ -8,7 +8,7 @@ from auth import get_current_admin, get_password_hash
 from models import User, Team, Session, Round, TeamSession, Score
 from schemas import (
     TeamCreate, TeamResponse, SessionCreate, SessionResponse,
-    RoundCreate, RoundResponse, SessionUpdate, TeamUpdate
+    RoundCreate, RoundResponse, SessionUpdate, TeamUpdate, UserLogin
 )
 from config import settings
 
@@ -267,20 +267,19 @@ async def assign_teams_to_session(
 
 @router.post("/users/quiz-master")
 async def create_quiz_master(
-    username: str,
-    password: str,
+    user_data: UserLogin,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_admin)
 ):
     """Create a quiz master user"""
     # Check if username exists
-    result = await db.execute(select(User).where(User.username == username))
+    result = await db.execute(select(User).where(User.username == user_data.username))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already exists")
 
     new_user = User(
-        username=username,
-        password_hash=get_password_hash(password),
+        username=user_data.username,
+        password_hash=get_password_hash(user_data.password),
         role="quiz_master"
     )
     db.add(new_user)
