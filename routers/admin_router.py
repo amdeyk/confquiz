@@ -272,11 +272,17 @@ async def create_quiz_master(
     current_user: User = Depends(get_current_admin)
 ):
     """Create a quiz master user"""
+    print(f"[DEBUG] Creating quiz master - Username: {user_data.username}, Password length: {len(user_data.password)}")
+
     # Check if username exists
     result = await db.execute(select(User).where(User.username == user_data.username))
-    if result.scalar_one_or_none():
+    existing_user = result.scalar_one_or_none()
+
+    if existing_user:
+        print(f"[DEBUG] Username '{user_data.username}' already exists")
         raise HTTPException(status_code=400, detail="Username already exists")
 
+    print(f"[DEBUG] Creating new quiz master user: {user_data.username}")
     new_user = User(
         username=user_data.username,
         password_hash=get_password_hash(user_data.password),
@@ -285,4 +291,5 @@ async def create_quiz_master(
     db.add(new_user)
     await db.commit()
 
+    print(f"[DEBUG] Quiz master '{user_data.username}' created successfully")
     return {"message": "Quiz master created successfully"}

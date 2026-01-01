@@ -4,6 +4,8 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from config import settings
 from database import init_db, get_db
@@ -49,6 +51,27 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    if request.url.path == "/api/admin/users/quiz-master":
+        body = await request.body()
+        print(f"[DEBUG] Quiz Master Creation Request:")
+        print(f"  Method: {request.method}")
+        print(f"  Path: {request.url.path}")
+        print(f"  Headers: {dict(request.headers)}")
+        print(f"  Body: {body.decode('utf-8') if body else 'empty'}")
+
+        # Important: Create new request with the same body
+        from fastapi import Request as FastAPIRequest
+        async def receive():
+            return {"type": "http.request", "body": body}
+
+        request = FastAPIRequest(request.scope, receive)
+
+    response = await call_next(request)
+    return response
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -57,6 +80,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Validation error handler
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print(f"[DEBUG] Validation Error on {request.url.path}:")
+    print(f"  Errors: {exc.errors()}")
+    print(f"  Body: {exc.body}")
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "body": str(exc.body)}
+    )
 
 # Mount static files
 os.makedirs("static", exist_ok=True)
