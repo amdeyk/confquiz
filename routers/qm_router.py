@@ -9,6 +9,7 @@ from models import User, Session, Slide, SlideMapping, TeamSession, Score, Score
 from schemas import SessionResponse, TimerStart, ScoreAdjustment
 import redis.asyncio as redis
 from config import settings
+from services.timer_service import timer_service
 
 router = APIRouter()
 
@@ -182,20 +183,15 @@ async def start_timer(
     current_user: User = Depends(get_current_quiz_master)
 ):
     """Start timer"""
-    r = await get_redis()
-
     # Get duration (from request, slide default, or round default)
     duration_ms = timer_data.duration_ms or 30000  # Default 30 seconds
 
-    # Set timer state in Redis
-    timer_key = f"timer:{session_id}"
-    await r.hset(timer_key, mapping={
-        "state": "counting",
-        "start_epoch": str(int(__import__('time').time() * 1000)),
-        "duration_ms": str(duration_ms),
-        "remaining_ms": str(duration_ms),
-        "fastest_finger": str(timer_data.fastest_finger or False)
-    })
+    # Use timer service to start timer with background countdown task
+    await timer_service.start_timer(
+        session_id=session_id,
+        duration_ms=duration_ms,
+        fastest_finger=timer_data.fastest_finger or False
+    )
 
     return {"message": "Timer started", "duration_ms": duration_ms}
 
@@ -206,14 +202,9 @@ async def pause_timer(
     current_user: User = Depends(get_current_quiz_master)
 ):
     """Pause timer"""
-    r = await get_redis()
-    timer_key = f"timer:{session_id}"
-
-    timer_data = await r.hgetall(timer_key)
-    if not timer_data:
-        raise HTTPException(status_code=400, detail="No active timer")
-
-    await r.hset(timer_key, "state", "paused")
+    success = await timer_service.pause_timer(session_id)
+    if not success:
+        raise HTTPException(status_code=400, detail="No active timer to pause")
 
     return {"message": "Timer paused"}
 
@@ -224,10 +215,7 @@ async def reset_timer(
     current_user: User = Depends(get_current_quiz_master)
 ):
     """Reset timer"""
-    r = await get_redis()
-    timer_key = f"timer:{session_id}"
-
-    await r.delete(timer_key)
+    await timer_service.reset_timer(session_id)
 
     return {"message": "Timer reset"}
 
