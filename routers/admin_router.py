@@ -4,7 +4,7 @@ from sqlalchemy import select
 from typing import List
 
 from database import get_db
-from auth import get_current_admin, get_password_hash
+from auth import get_current_admin, get_current_quiz_master, get_password_hash
 from models import User, Team, Session, Round, TeamSession, Score
 from schemas import (
     TeamCreate, TeamResponse, SessionCreate, SessionResponse,
@@ -84,9 +84,11 @@ async def update_team(
 async def create_session(
     session: SessionCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_quiz_master)
 ):
-    """Create a new quiz session"""
+    """Create a new quiz session (admin or quiz master)"""
+    print(f"[DEBUG] Creating session: {session.name} by user {current_user.username} (role: {current_user.role})")
+
     # Use conference_name from settings if banner_text not provided
     banner = session.banner_text or settings.conference_name
 
@@ -100,6 +102,7 @@ async def create_session(
     await db.commit()
     await db.refresh(new_session)
 
+    print(f"[DEBUG] Session created successfully: ID={new_session.id}")
     return new_session
 
 
@@ -107,9 +110,9 @@ async def create_session(
 async def get_session(
     session_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_quiz_master)
 ):
-    """Get session details"""
+    """Get session details (admin or quiz master)"""
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
 
@@ -122,11 +125,13 @@ async def get_session(
 @router.get("/sessions", response_model=List[SessionResponse])
 async def list_sessions(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_quiz_master)
 ):
-    """List all sessions"""
+    """List all sessions (admin or quiz master)"""
+    print(f"[DEBUG] Listing sessions for user {current_user.username} (role: {current_user.role})")
     result = await db.execute(select(Session).order_by(Session.created_at.desc()))
     sessions = result.scalars().all()
+    print(f"[DEBUG] Found {len(sessions)} sessions")
     return sessions
 
 
@@ -135,9 +140,9 @@ async def update_session(
     session_id: int,
     session_update: SessionUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_admin)
+    current_user: User = Depends(get_current_quiz_master)
 ):
-    """Update session details"""
+    """Update session details (admin or quiz master)"""
     result = await db.execute(select(Session).where(Session.id == session_id))
     session = result.scalar_one_or_none()
 
