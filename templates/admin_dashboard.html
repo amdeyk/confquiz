@@ -296,7 +296,9 @@ document.getElementById('addQMForm').addEventListener('submit', async (e) => {
 });
 
 function viewSession(sessionId) {
-    window.location.href = `/admin/session/${sessionId}`;
+    debug('Admin Dashboard: Redirecting to QM dashboard for session', sessionId);
+    // Redirect to QM dashboard where session can be managed
+    window.location.href = `/qm/dashboard`;
 }
 
 function logout() {
