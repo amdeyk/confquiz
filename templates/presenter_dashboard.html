@@ -410,17 +410,16 @@ async function setupWebRTC() {
         };
     });
 
-    // Capture frames at controlled FPS with manual frame updates
-    const canvasStream = canvas.captureStream(0); // 0 = manual frame capture
+    // Enable high quality rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // Capture frames at controlled FPS - use frameRate parameter for automatic capture
+    const canvasStream = canvas.captureStream(frameRate);
+
+    // Draw frames continuously at controlled rate
     canvasInterval = setInterval(() => {
-        // Use high quality image smoothing
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-        // Request frame update on canvas stream
-        canvas.getContext('2d').getImageData(0, 0, 1, 1); // Trigger frame capture
-
         document.getElementById('currentFps').textContent = frameRate;
     }, 1000 / frameRate);
 

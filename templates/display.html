@@ -360,16 +360,38 @@ async function setupWebRTC(offer, presenterId) {
         // Handle incoming stream
         peerConnection.ontrack = (event) => {
             console.log('[WebRTC] Received remote stream!');
+            console.log('[WebRTC] Stream:', event.streams[0]);
             console.log('[WebRTC] Tracks:', event.streams[0].getTracks());
+            console.log('[WebRTC] Track count:', event.streams[0].getTracks().length);
 
             const video = document.getElementById('screenShareVideo');
+            if (!video) {
+                console.error('[WebRTC] Video element not found!');
+                return;
+            }
+
+            console.log('[WebRTC] Setting srcObject...');
             video.srcObject = event.streams[0];
 
-            // Switch to video mode
-            document.getElementById('slideContainer').classList.add('hidden');
-            video.classList.add('active');
+            // Ensure video plays
+            video.play().then(() => {
+                console.log('[WebRTC] Video playing successfully');
+            }).catch(err => {
+                console.error('[WebRTC] Video play error:', err);
+            });
 
-            console.log('[WebRTC] Video element updated, active class added');
+            // Switch to video mode
+            console.log('[WebRTC] Hiding slide container...');
+            const slideContainer = document.getElementById('slideContainer');
+            slideContainer.classList.add('hidden');
+            console.log('[WebRTC] Slide container hidden:', slideContainer.classList.contains('hidden'));
+
+            console.log('[WebRTC] Adding active class to video...');
+            video.classList.add('active');
+            console.log('[WebRTC] Video has active class:', video.classList.contains('active'));
+            console.log('[WebRTC] Video display style:', window.getComputedStyle(video).display);
+
+            console.log('[WebRTC] Video element updated successfully!');
         };
 
         // Handle ICE candidates
