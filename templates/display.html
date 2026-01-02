@@ -19,7 +19,7 @@
             </div>
 
             <!-- WebRTC Screen Share Video -->
-            <video id="screenShareVideo" class="screen-share-video" autoplay playsinline></video>
+            <video id="screenShareVideo" class="screen-share-video" autoplay playsinline muted></video>
         </div>
 
         <!-- Side Panel (Right) -->
@@ -373,12 +373,8 @@ async function setupWebRTC(offer, presenterId) {
             console.log('[WebRTC] Setting srcObject...');
             video.srcObject = event.streams[0];
 
-            // Ensure video plays
-            video.play().then(() => {
-                console.log('[WebRTC] Video playing successfully');
-            }).catch(err => {
-                console.error('[WebRTC] Video play error:', err);
-            });
+            // Video will autoplay since it has autoplay and muted attributes
+            console.log('[WebRTC] Video srcObject set, autoplay will handle playback');
 
             // Switch to video mode
             console.log('[WebRTC] Hiding slide container...');
