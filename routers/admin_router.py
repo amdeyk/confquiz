@@ -4,7 +4,7 @@ from sqlalchemy import select
 from typing import List
 
 from database import get_db
-from auth import get_current_admin, get_current_quiz_master, get_password_hash
+from auth import get_current_admin, get_current_quiz_master, get_current_user, get_password_hash
 from models import User, Team, Session, Round, TeamSession, Score, AdminSettings
 from schemas import (
     TeamCreate, TeamResponse, SessionCreate, SessionResponse,
