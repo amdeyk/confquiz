@@ -4,7 +4,7 @@ from sqlalchemy import select
 from typing import List, Optional
 
 from database import get_db
-from models import Session, Slide, Round, TeamSession, Score, Team
+from models import Session, Slide, Round, TeamSession, Score, Team, AdminSettings
 from schemas import DisplaySnapshot, SlideResponse, RoundResponse, ScoreResponse
 import redis.asyncio as redis
 from config import settings
@@ -101,3 +101,17 @@ async def get_display_snapshot(
         "timer_state": timer_state,
         "buzzer_queue": buzzer_queue
     }
+
+
+@router.get("/display-mode")
+async def get_display_mode(db: AsyncSession = Depends(get_db)):
+    """Get display mode setting (public endpoint for display screens)"""
+    result = await db.execute(
+        select(AdminSettings).where(AdminSettings.setting_key == "display_mode")
+    )
+    setting = result.scalar_one_or_none()
+
+    if not setting:
+        return {"display_mode": "png_slides"}
+
+    return {"display_mode": setting.setting_value}

@@ -321,14 +321,10 @@ const displayId = 'display_' + Math.random().toString(36).substr(2, 9);
 
 async function loadDisplayMode() {
     try {
-        const response = await fetch('/api/admin/settings/display_mode', {
-            headers: {
-                'Authorization': 'Bearer ' + (getAuthToken() || '')
-            }
-        });
+        const response = await fetch('/api/display/display-mode');
         if (response.ok) {
             const data = await response.json();
-            displayMode = data.setting_value || 'png_slides';
+            displayMode = data.display_mode || 'png_slides';
             console.log('Display mode:', displayMode);
         }
     } catch (error) {
@@ -338,6 +334,8 @@ async function loadDisplayMode() {
 
 async function setupWebRTC(offer, presenterId) {
     try {
+        console.log('[WebRTC] Setting up WebRTC connection...');
+
         // Close existing connection
         if (peerConnection) {
             peerConnection.close();
@@ -350,15 +348,28 @@ async function setupWebRTC(offer, presenterId) {
             ]
         });
 
+        // Monitor connection state
+        peerConnection.onconnectionstatechange = () => {
+            console.log('[WebRTC] Connection state:', peerConnection.connectionState);
+        };
+
+        peerConnection.oniceconnectionstatechange = () => {
+            console.log('[WebRTC] ICE connection state:', peerConnection.iceConnectionState);
+        };
+
         // Handle incoming stream
         peerConnection.ontrack = (event) => {
-            console.log('Received remote stream');
+            console.log('[WebRTC] Received remote stream!');
+            console.log('[WebRTC] Tracks:', event.streams[0].getTracks());
+
             const video = document.getElementById('screenShareVideo');
             video.srcObject = event.streams[0];
 
             // Switch to video mode
             document.getElementById('slideContainer').classList.add('hidden');
             video.classList.add('active');
+
+            console.log('[WebRTC] Video element updated, active class added');
         };
 
         // Handle ICE candidates
@@ -373,25 +384,31 @@ async function setupWebRTC(offer, presenterId) {
         };
 
         // Set remote description (offer from presenter)
+        console.log('[WebRTC] Setting remote description (offer)...');
         await peerConnection.setRemoteDescription(new RTCSessionDescription({
             type: 'offer',
             sdp: offer
         }));
 
         // Create and send answer
+        console.log('[WebRTC] Creating answer...');
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
+        console.log('[WebRTC] Sending answer back to presenter...');
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'answer',
                 sdp: answer.sdp,
                 display_id: displayId
             }));
+            console.log('[WebRTC] Answer sent!');
+        } else {
+            console.error('[WebRTC] WebSocket not open, cannot send answer');
         }
 
     } catch (error) {
-        console.error('WebRTC setup failed:', error);
+        console.error('[WebRTC] Setup failed:', error);
         showAlert('Screen sharing connection failed', 'error');
     }
 }
@@ -535,8 +552,12 @@ function connectWebSocket() {
 
                 case 'webrtc.offer':
                     // Presenter is offering screen share
+                    console.log('[WebRTC] Received offer, displayMode:', displayMode);
                     if (displayMode === 'screen_share') {
+                        console.log('[WebRTC] Calling setupWebRTC...');
                         setupWebRTC(data.sdp, data.presenter_id);
+                    } else {
+                        console.log('[WebRTC] Ignoring offer because displayMode is not screen_share');
                     }
                     break;
 
