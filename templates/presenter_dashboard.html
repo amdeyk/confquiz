@@ -333,6 +333,41 @@ async function startScreenShare() {
     }
 }
 
+// Helper function to prefer specific codec in SDP
+function preferCodec(sdp, type, codec) {
+    const lines = sdp.split('\r\n');
+    const mLineIndex = lines.findIndex(line => line.startsWith(`m=${type}`));
+
+    if (mLineIndex === -1) return sdp;
+
+    // Find the codec payload type
+    const codecPattern = new RegExp(`a=rtpmap:(\\d+) ${codec}\\/\\d+`, 'i');
+    let codecPayload = null;
+
+    for (let i = mLineIndex; i < lines.length; i++) {
+        const match = lines[i].match(codecPattern);
+        if (match) {
+            codecPayload = match[1];
+            break;
+        }
+        if (lines[i].startsWith('m=')) break;
+    }
+
+    if (!codecPayload) return sdp; // Codec not found
+
+    // Move preferred codec to front of m-line
+    const mLine = lines[mLineIndex].split(' ');
+    const payloadIndex = mLine.indexOf(codecPayload);
+
+    if (payloadIndex > 3) { // After m=video/audio port proto
+        mLine.splice(payloadIndex, 1);
+        mLine.splice(3, 0, codecPayload);
+        lines[mLineIndex] = mLine.join(' ');
+    }
+
+    return lines.join('\r\n');
+}
+
 // Setup WebRTC peer connection
 async function setupWebRTC() {
     // Create peer connection
@@ -342,34 +377,68 @@ async function setupWebRTC() {
         ]
     });
 
-    // Create canvas for frame rate control
+    // Monitor connection state and send status updates
+    peerConnection.onconnectionstatechange = () => {
+        console.log('[WebRTC] Connection state:', peerConnection.connectionState);
+        sendStatusUpdate();
+    };
+
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('[WebRTC] ICE connection state:', peerConnection.iceConnectionState);
+        sendStatusUpdate();
+    };
+
+    // Create canvas for frame rate control with high quality
     const video = document.createElement('video');
     video.srcObject = screenStream;
     video.play();
 
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', {
+        alpha: false,
+        desynchronized: true
+    });
 
     // Wait for video to load
     await new Promise(resolve => {
         video.onloadedmetadata = () => {
+            // Use full resolution for best quality
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
+            console.log(`Canvas resolution: ${canvas.width}x${canvas.height}`);
             resolve();
         };
     });
 
-    // Capture frames at controlled FPS
-    const canvasStream = canvas.captureStream(frameRate);
+    // Capture frames at controlled FPS with manual frame updates
+    const canvasStream = canvas.captureStream(0); // 0 = manual frame capture
     canvasInterval = setInterval(() => {
+        // Use high quality image smoothing
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Request frame update on canvas stream
+        canvas.getContext('2d').getImageData(0, 0, 1, 1); // Trigger frame capture
+
         document.getElementById('currentFps').textContent = frameRate;
     }, 1000 / frameRate);
 
-    // Add canvas stream to peer connection
-    canvasStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, canvasStream);
-    });
+    // Add canvas stream to peer connection with quality constraints
+    const videoTrack = canvasStream.getVideoTracks()[0];
+    const sender = peerConnection.addTrack(videoTrack, canvasStream);
+
+    // Set encoding parameters for higher quality
+    const parameters = sender.getParameters();
+    if (!parameters.encodings || parameters.encodings.length === 0) {
+        parameters.encodings = [{}];
+    }
+
+    // Set high bitrate for better quality (2 Mbps max, 1 Mbps target)
+    parameters.encodings[0].maxBitrate = 2000000; // 2 Mbps
+    parameters.encodings[0].maxFramerate = frameRate;
+
+    await sender.setParameters(parameters);
 
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
@@ -382,8 +451,15 @@ async function setupWebRTC() {
         }
     };
 
-    // Create and send offer
-    const offer = await peerConnection.createOffer();
+    // Create and send offer with video quality constraints
+    const offer = await peerConnection.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false
+    });
+
+    // Modify SDP to prefer VP9 codec for better compression
+    offer.sdp = preferCodec(offer.sdp, 'video', 'VP9');
+
     await peerConnection.setLocalDescription(offer);
 
     websocket.send(JSON.stringify({
@@ -426,6 +502,30 @@ function stopScreenShare() {
     document.getElementById('presentingState').style.display = 'none';
     document.getElementById('localPreview').srcObject = null;
 }
+
+// Send status update to admin dashboard
+function sendStatusUpdate() {
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+
+    const status = {
+        action: 'status-update',
+        presenter_id: presenterId,
+        is_presenting: !!screenStream,
+        webrtc_state: peerConnection ? peerConnection.connectionState : 'disconnected',
+        ice_state: peerConnection ? peerConnection.iceConnectionState : 'disconnected',
+        frame_rate: frameRate,
+        resolution: screenStream ? `${screenStream.getVideoTracks()[0].getSettings().width}x${screenStream.getVideoTracks()[0].getSettings().height}` : null
+    };
+
+    websocket.send(JSON.stringify(status));
+}
+
+// Send periodic status updates
+setInterval(() => {
+    if (screenStream && peerConnection) {
+        sendStatusUpdate();
+    }
+}, 3000); // Every 3 seconds
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {

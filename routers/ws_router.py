@@ -337,6 +337,22 @@ async def websocket_presenter(websocket: WebSocket, session_id: int, token: str 
                     }
                 )
 
+            elif message.get("action") == "status-update":
+                # Forward presenter status to admin dashboard
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "presenter.status",
+                        "presenter_id": message.get("presenter_id"),
+                        "is_presenting": message.get("is_presenting"),
+                        "webrtc_state": message.get("webrtc_state"),
+                        "ice_state": message.get("ice_state"),
+                        "frame_rate": message.get("frame_rate"),
+                        "resolution": message.get("resolution")
+                    },
+                    role="admin"
+                )
+
     except WebSocketDisconnect:
         # Presenter disconnected, notify all clients
         await manager.broadcast_to_session(

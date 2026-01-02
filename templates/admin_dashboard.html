@@ -18,7 +18,7 @@
                 <button class="btn btn-primary" onclick="showSection('sessions')">Manage Sessions</button>
                 <button class="btn btn-primary" onclick="showSection('slides')">Upload Slides</button>
                 <button class="btn btn-primary" onclick="showSection('qm-users')">Create Quiz Master</button>
-                <button class="btn btn-primary" onclick="showSection('settings')">Display Settings</button>
+                <button class="btn btn-primary" onclick="showSection('settings')">📡 Display & Monitor</button>
             </div>
         </div>
 
@@ -59,6 +59,54 @@
                 <div class="alert alert-info" style="margin-top: 20px;">
                     <strong>Note:</strong> Screen share mode requires a presenter to share their screen.
                     PNG slides mode uses uploaded presentation files.
+                </div>
+            </div>
+
+            <!-- WebRTC Signal Monitor -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>📡 WebRTC Signal Monitor</h2>
+                <p class="info-text">Real-time monitoring of screen sharing connections</p>
+
+                <div class="signal-monitor">
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Presenter Status</div>
+                            <div id="presenterStatus" class="status-indicator status-disconnected">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Disconnected</span>
+                            </div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Display Screens</div>
+                            <div id="displayCount" class="monitor-value">0 connected</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">WebRTC Connection</div>
+                            <div id="webrtcStatus" class="status-indicator status-disconnected">
+                                <span class="status-dot"></span>
+                                <span class="status-text">Not Connected</span>
+                            </div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Streaming Quality</div>
+                            <div id="streamQuality" class="monitor-value">
+                                <div>Frame Rate: <span id="monitorFps">--</span> FPS</div>
+                                <div>Resolution: <span id="monitorResolution">--</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item" style="flex: 1;">
+                            <div class="monitor-label">Last Update</div>
+                            <div id="lastUpdate" class="monitor-value">--</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -376,6 +424,102 @@
         display: block;
         margin-top: 5px;
         font-size: 0.85rem;
+    }
+
+    /* WebRTC Signal Monitor */
+    .signal-monitor {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .monitor-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .monitor-row:last-child {
+        margin-bottom: 0;
+    }
+
+    .monitor-item {
+        background: white;
+        padding: 15px;
+        border-radius: 6px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .monitor-label {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 8px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .monitor-value {
+        font-size: 1.1rem;
+        color: #2c3e50;
+        font-weight: 500;
+    }
+
+    .monitor-value div {
+        margin: 4px 0;
+        font-size: 0.95rem;
+    }
+
+    .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .status-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        animation: pulse 2s infinite;
+    }
+
+    .status-connected .status-dot {
+        background: #27ae60;
+    }
+
+    .status-disconnected .status-dot {
+        background: #95a5a6;
+        animation: none;
+    }
+
+    .status-error .status-dot {
+        background: #e74c3c;
+    }
+
+    .status-connected .status-text {
+        color: #27ae60;
+    }
+
+    .status-disconnected .status-text {
+        color: #95a5a6;
+    }
+
+    .status-error .status-text {
+        color: #e74c3c;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.6;
+            transform: scale(1.1);
+        }
     }
 </style>
 
@@ -847,6 +991,100 @@ function logout() {
 }
 
 // Check authentication on load
+// WebRTC Signal Monitoring
+let monitorWebSocket = null;
+let monitorSessionId = null;
+
+function initializeMonitor(sessionId) {
+    monitorSessionId = sessionId;
+    connectMonitorWebSocket();
+}
+
+function connectMonitorWebSocket() {
+    if (!monitorSessionId) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const token = getAuthToken();
+    const wsUrl = `${protocol}//${window.location.host}/ws/admin/${monitorSessionId}?token=${token}`;
+
+    monitorWebSocket = new WebSocket(wsUrl);
+
+    monitorWebSocket.onopen = () => {
+        console.log('[Monitor] WebSocket connected');
+    };
+
+    monitorWebSocket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.event === 'presenter.status') {
+            updatePresenterStatus(data);
+        } else if (data.event === 'presenter.started') {
+            updatePresenterStatusIndicator('connected', 'Presenting');
+        } else if (data.event === 'presenter.stopped' || data.event === 'presenter.disconnected') {
+            updatePresenterStatusIndicator('disconnected', 'Disconnected');
+            updateWebRTCStatus('disconnected', 'Not Connected');
+        }
+    };
+
+    monitorWebSocket.onclose = () => {
+        console.log('[Monitor] WebSocket closed, reconnecting...');
+        setTimeout(connectMonitorWebSocket, 3000);
+    };
+}
+
+function updatePresenterStatus(data) {
+    // Update presenter status
+    const status = data.is_presenting ? 'connected' : 'disconnected';
+    const text = data.is_presenting ? 'Presenting' : 'Disconnected';
+    updatePresenterStatusIndicator(status, text);
+
+    // Update WebRTC status
+    if (data.webrtc_state === 'connected') {
+        updateWebRTCStatus('connected', 'Connected');
+    } else if (data.webrtc_state === 'failed') {
+        updateWebRTCStatus('error', 'Failed');
+    } else {
+        updateWebRTCStatus('disconnected', data.webrtc_state || 'Connecting');
+    }
+
+    // Update quality info
+    if (data.frame_rate) {
+        document.getElementById('monitorFps').textContent = data.frame_rate;
+    }
+    if (data.resolution) {
+        document.getElementById('monitorResolution').textContent = data.resolution;
+    }
+
+    // Update last update time
+    document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+}
+
+function updatePresenterStatusIndicator(status, text) {
+    const indicator = document.getElementById('presenterStatus');
+    indicator.className = `status-indicator status-${status}`;
+    indicator.querySelector('.status-text').textContent = text;
+}
+
+function updateWebRTCStatus(status, text) {
+    const indicator = document.getElementById('webrtcStatus');
+    indicator.className = `status-indicator status-${status}`;
+    indicator.querySelector('.status-text').textContent = text;
+}
+
+function updateDisplayCount(count) {
+    document.getElementById('displayCount').textContent = `${count} connected`;
+}
+
+// Initialize monitor when settings section is shown
+const originalShowSection = showSection;
+showSection = function(section) {
+    originalShowSection(section);
+    if (section === 'settings' && !monitorSessionId) {
+        // Get active session ID (you can modify this to select a specific session)
+        initializeMonitor(1); // Default to session 1, or make this dynamic
+    }
+};
+
 window.addEventListener('load', () => {
     const token = getAuthToken();
     if (!token) {
