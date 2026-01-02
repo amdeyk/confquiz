@@ -332,6 +332,32 @@ async def create_presenter(
     return {"message": "Presenter created successfully"}
 
 
+@router.get("/presenter/sessions")
+async def get_presenter_sessions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all sessions for presenter (requires presenter or admin role)"""
+    if current_user.role not in ["presenter", "admin"]:
+        raise HTTPException(status_code=403, detail="Presenter or admin access required")
+
+    # Get all sessions (draft and live)
+    result = await db.execute(
+        select(Session).where(Session.status.in_(["draft", "live"])).order_by(Session.created_at.desc())
+    )
+    sessions = result.scalars().all()
+
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "status": s.status,
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        }
+        for s in sessions
+    ]
+
+
 # ============ Admin Settings Management ============
 
 @router.get("/settings")

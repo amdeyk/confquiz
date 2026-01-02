@@ -216,7 +216,7 @@ window.addEventListener('load', () => {
 // Load sessions
 async function loadSessions() {
     try {
-        const response = await apiRequest('/qm/sessions/live');
+        const response = await apiRequest('/admin/presenter/sessions');
         const sessions = await response.json();
 
         const select = document.getElementById('sessionSelect');
