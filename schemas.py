@@ -211,3 +211,23 @@ class DisplaySnapshot(BaseModel):
     scores: List[ScoreResponse]
     timer_state: Optional[Dict[str, Any]]
     buzzer_queue: List[BuzzerQueueItem]
+
+
+# ============ Admin Settings Schemas ============
+
+class AdminSettingUpdate(BaseModel):
+    setting_key: str
+    setting_value: str
+
+    class Config:
+        from_attributes = True
+
+
+class AdminSettingResponse(BaseModel):
+    id: int
+    setting_key: str
+    setting_value: str
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

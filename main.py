@@ -147,6 +147,15 @@ async def team_login_page(request: Request):
     })
 
 
+@app.get("/presenter/login")
+async def presenter_login_page(request: Request):
+    """Presenter login page"""
+    return templates.TemplateResponse("presenter_login.html", {
+        "request": request,
+        "settings": settings
+    })
+
+
 @app.get("/admin/dashboard")
 async def admin_dashboard_page(request: Request):
     """Admin dashboard page"""
@@ -160,6 +169,15 @@ async def admin_dashboard_page(request: Request):
 async def qm_dashboard_page(request: Request):
     """Quiz Master dashboard page"""
     return templates.TemplateResponse("qm_dashboard.html", {
+        "request": request,
+        "settings": settings
+    })
+
+
+@app.get("/presenter/dashboard")
+async def presenter_dashboard_page(request: Request):
+    """Presenter dashboard page"""
+    return templates.TemplateResponse("presenter_dashboard.html", {
         "request": request,
         "settings": settings
     })

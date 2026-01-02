@@ -12,7 +12,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
-    role = Column(String, nullable=False)  # 'admin' or 'quiz_master'
+    role = Column(String, nullable=False)  # 'admin', 'quiz_master', or 'presenter'
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -194,3 +194,12 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     payload = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class AdminSettings(Base):
+    __tablename__ = "admin_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    setting_key = Column(String, unique=True, nullable=False, index=True)
+    setting_value = Column(String, nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

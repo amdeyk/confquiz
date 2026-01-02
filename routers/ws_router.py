@@ -148,13 +148,37 @@ async def websocket_quiz_master(websocket: WebSocket, session_id: int, token: st
 
 @router.websocket("/display/{session_id}")
 async def websocket_display(websocket: WebSocket, session_id: int):
-    """WebSocket for main display screen"""
+    """WebSocket for main display screen with WebRTC support"""
     await manager.connect(websocket, session_id, "display")
     try:
         while True:
-            data = await websocket.receive_text()
-            # Display is typically receive-only
-            pass
+            message = await websocket.receive_json()
+
+            # Handle WebRTC answer from display
+            if message.get("type") == "answer":
+                # Forward answer back to presenter
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "webrtc.answer",
+                        "sdp": message.get("sdp"),
+                        "display_id": message.get("display_id")
+                    },
+                    role="presenter"
+                )
+
+            elif message.get("type") == "ice-candidate":
+                # Forward ICE candidate to presenter
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "webrtc.ice.display",
+                        "candidate": message.get("candidate"),
+                        "display_id": message.get("display_id")
+                    },
+                    role="presenter"
+                )
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id, "display")
 
@@ -241,3 +265,82 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
 async def broadcast_event(session_id: int, event: dict, role: str = None):
     """Utility function to broadcast events from other parts of the app"""
     await manager.broadcast_to_session(session_id, event, role)
+
+
+async def broadcast_settings_update(setting_key: str, setting_value: str):
+    """Broadcast settings update to all connected clients"""
+    # Broadcast to all sessions
+    for session_id in manager.active_connections.keys():
+        await manager.broadcast_to_session(
+            session_id,
+            {
+                "event": "settings.update",
+                "setting_key": setting_key,
+                "setting_value": setting_value
+            }
+        )
+
+
+@router.websocket("/presenter/{session_id}")
+async def websocket_presenter(websocket: WebSocket, session_id: int, token: str = Query(...)):
+    """WebSocket for presenter with WebRTC signaling support"""
+    # TODO: Validate token and permissions
+    await manager.connect(websocket, session_id, "presenter")
+
+    try:
+        while True:
+            message = await websocket.receive_json()
+
+            # Handle WebRTC signaling messages
+            if message.get("type") == "offer":
+                # Presenter is offering to start screen sharing
+                # Broadcast offer to all display clients
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "webrtc.offer",
+                        "sdp": message.get("sdp"),
+                        "presenter_id": message.get("presenter_id")
+                    },
+                    role="display"
+                )
+
+            elif message.get("type") == "ice-candidate":
+                # Forward ICE candidate to display clients
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "webrtc.ice",
+                        "candidate": message.get("candidate"),
+                        "presenter_id": message.get("presenter_id")
+                    },
+                    role="display"
+                )
+
+            elif message.get("action") == "start-presenting":
+                # Notify all clients that presenter has started
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "presenter.started",
+                        "presenter_id": message.get("presenter_id")
+                    }
+                )
+
+            elif message.get("action") == "stop-presenting":
+                # Notify all clients that presenter has stopped
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "presenter.stopped",
+                        "presenter_id": message.get("presenter_id")
+                    }
+                )
+
+    except WebSocketDisconnect:
+        # Presenter disconnected, notify all clients
+        await manager.broadcast_to_session(
+            session_id,
+            {"event": "presenter.disconnected"}
+        )
+        manager.disconnect(websocket, session_id, "presenter")

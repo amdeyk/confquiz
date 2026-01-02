@@ -13,9 +13,13 @@
     <div class="display-grid">
         <!-- Slide Display (Left) -->
         <div class="slide-area">
+            <!-- PNG Slides -->
             <div id="slideContainer" class="slide-container">
                 <div class="no-slide">No slide loaded</div>
             </div>
+
+            <!-- WebRTC Screen Share Video -->
+            <video id="screenShareVideo" class="screen-share-video" autoplay playsinline></video>
         </div>
 
         <!-- Side Panel (Right) -->
@@ -134,6 +138,21 @@
     .no-slide {
         color: #95a5a6;
         font-size: 1.5rem;
+    }
+
+    .screen-share-video {
+        display: none;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+    .screen-share-video.active {
+        display: block;
+    }
+
+    .slide-container.hidden {
+        display: none;
     }
 
     .side-panel {
@@ -296,8 +315,104 @@
 <script>
 let ws = null;
 let sessionId = null;
+let peerConnection = null;
+let displayMode = 'png_slides'; // Default mode
+const displayId = 'display_' + Math.random().toString(36).substr(2, 9);
+
+async function loadDisplayMode() {
+    try {
+        const response = await fetch('/api/admin/settings/display_mode', {
+            headers: {
+                'Authorization': 'Bearer ' + (getAuthToken() || '')
+            }
+        });
+        if (response.ok) {
+            const data = await response.json();
+            displayMode = data.setting_value || 'png_slides';
+            console.log('Display mode:', displayMode);
+        }
+    } catch (error) {
+        console.error('Failed to load display mode, using default:', error);
+    }
+}
+
+async function setupWebRTC(offer, presenterId) {
+    try {
+        // Close existing connection
+        if (peerConnection) {
+            peerConnection.close();
+        }
+
+        // Create new peer connection
+        peerConnection = new RTCPeerConnection({
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' }
+            ]
+        });
+
+        // Handle incoming stream
+        peerConnection.ontrack = (event) => {
+            console.log('Received remote stream');
+            const video = document.getElementById('screenShareVideo');
+            video.srcObject = event.streams[0];
+
+            // Switch to video mode
+            document.getElementById('slideContainer').classList.add('hidden');
+            video.classList.add('active');
+        };
+
+        // Handle ICE candidates
+        peerConnection.onicecandidate = (event) => {
+            if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'ice-candidate',
+                    candidate: event.candidate,
+                    display_id: displayId
+                }));
+            }
+        };
+
+        // Set remote description (offer from presenter)
+        await peerConnection.setRemoteDescription(new RTCSessionDescription({
+            type: 'offer',
+            sdp: offer
+        }));
+
+        // Create and send answer
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'answer',
+                sdp: answer.sdp,
+                display_id: displayId
+            }));
+        }
+
+    } catch (error) {
+        console.error('WebRTC setup failed:', error);
+        showAlert('Screen sharing connection failed', 'error');
+    }
+}
+
+function stopWebRTC() {
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+
+    const video = document.getElementById('screenShareVideo');
+    video.srcObject = null;
+    video.classList.remove('active');
+
+    // Switch back to PNG slides
+    document.getElementById('slideContainer').classList.remove('hidden');
+}
 
 async function init() {
+    // Load display mode setting
+    await loadDisplayMode();
     // Get session ID from URL or default to 1
     const urlParams = new URLSearchParams(window.location.search);
     sessionId = urlParams.get('session') || 1;
@@ -416,6 +531,36 @@ function connectWebSocket() {
                 case 'buzzer.results':
                     apiRequest(`/display/sessions/${sessionId}/snapshot`)
                         .then(snapshot => updateBuzzerQueue(snapshot.buzzer_queue));
+                    break;
+
+                case 'webrtc.offer':
+                    // Presenter is offering screen share
+                    if (displayMode === 'screen_share') {
+                        setupWebRTC(data.sdp, data.presenter_id);
+                    }
+                    break;
+
+                case 'webrtc.ice':
+                    // Received ICE candidate from presenter
+                    if (peerConnection && data.candidate) {
+                        peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                    break;
+
+                case 'presenter.stopped':
+                case 'presenter.disconnected':
+                    // Presenter stopped sharing
+                    stopWebRTC();
+                    break;
+
+                case 'settings.update':
+                    // Display mode changed
+                    if (data.setting_key === 'display_mode') {
+                        displayMode = data.setting_value;
+                        if (displayMode === 'png_slides') {
+                            stopWebRTC();
+                        }
+                    }
                     break;
             }
         } catch (error) {

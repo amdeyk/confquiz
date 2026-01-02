@@ -5,7 +5,7 @@ from typing import List
 
 from database import get_db
 from auth import get_current_admin, get_current_quiz_master, get_password_hash
-from models import User, Team, Session, Round, TeamSession, Score
+from models import User, Team, Session, Round, TeamSession, Score, AdminSettings
 from schemas import (
     TeamCreate, TeamResponse, SessionCreate, SessionResponse,
     RoundCreate, RoundResponse, SessionUpdate, TeamUpdate, UserLogin
@@ -298,3 +298,104 @@ async def create_quiz_master(
 
     print(f"[DEBUG] Quiz master '{user_data.username}' created successfully")
     return {"message": "Quiz master created successfully"}
+
+
+# ============ Presenter Management ============
+
+@router.post("/users/presenter")
+async def create_presenter(
+    user_data: UserLogin,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Create a presenter user"""
+    print(f"[DEBUG] Creating presenter - Username: {user_data.username}")
+
+    # Check if username exists
+    result = await db.execute(select(User).where(User.username == user_data.username))
+    existing_user = result.scalar_one_or_none()
+
+    if existing_user:
+        print(f"[DEBUG] Username '{user_data.username}' already exists")
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    print(f"[DEBUG] Creating new presenter user: {user_data.username}")
+    new_user = User(
+        username=user_data.username,
+        password_hash=get_password_hash(user_data.password),
+        role="presenter"
+    )
+    db.add(new_user)
+    await db.commit()
+
+    print(f"[DEBUG] Presenter '{user_data.username}' created successfully")
+    return {"message": "Presenter created successfully"}
+
+
+# ============ Admin Settings Management ============
+
+@router.get("/settings")
+async def get_all_settings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Get all admin settings"""
+    result = await db.execute(select(AdminSettings))
+    settings = result.scalars().all()
+
+    # Convert to dict for easier frontend consumption
+    settings_dict = {s.setting_key: s.setting_value for s in settings}
+    return settings_dict
+
+
+@router.get("/settings/{key}")
+async def get_setting(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Get a specific admin setting"""
+    result = await db.execute(
+        select(AdminSettings).where(AdminSettings.setting_key == key)
+    )
+    setting = result.scalar_one_or_none()
+
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+
+    return {
+        "setting_key": setting.setting_key,
+        "setting_value": setting.setting_value,
+        "updated_at": setting.updated_at
+    }
+
+
+@router.put("/settings/{key}")
+async def update_setting(
+    key: str,
+    value: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_admin)
+):
+    """Update an admin setting and broadcast change"""
+    result = await db.execute(
+        select(AdminSettings).where(AdminSettings.setting_key == key)
+    )
+    setting = result.scalar_one_or_none()
+
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting not found")
+
+    # Update setting
+    setting.setting_value = value
+    await db.commit()
+
+    # Broadcast setting change to all WebSocket clients
+    from routers.ws_router import broadcast_settings_update
+    await broadcast_settings_update(key, value)
+
+    return {
+        "message": "Setting updated successfully",
+        "setting_key": key,
+        "setting_value": value
+    }

@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+
+{% block title %}Presenter Dashboard - Quiz System{% endblock %}
+
+{% block content %}
+<div class="presenter-container">
+    <div class="header">
+        <h1>🎥 Presenter Dashboard</h1>
+        <div class="header-actions">
+            <span id="connectionStatus" class="status-badge disconnected">Disconnected</span>
+            <button onclick="logout()" class="btn btn-secondary">Logout</button>
+        </div>
+    </div>
+
+    <!-- Session Selection -->
+    <div class="card">
+        <h2>Select Session</h2>
+        <select id="sessionSelect" class="form-control">
+            <option value="">-- Select a session --</option>
+        </select>
+    </div>
+
+    <!-- Screen Sharing Controls -->
+    <div class="card">
+        <h2>Screen Sharing</h2>
+        <div id="notPresentingState">
+            <p class="info-text">Share your screen to present PowerPoint slides to the display</p>
+            <button id="startSharingBtn" class="btn btn-primary" onclick="startScreenShare()">
+                📺 Start Screen Sharing
+            </button>
+            <div class="settings-row">
+                <label>Frame Rate:</label>
+                <select id="fpsSelect">
+                    <option value="5">5 FPS (Low bandwidth)</option>
+                    <option value="10" selected>10 FPS (Recommended)</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="presentingState" style="display: none;">
+            <div class="presenting-indicator">
+                <div class="pulse-dot"></div>
+                <span>You are presenting</span>
+            </div>
+            <video id="localPreview" autoplay playsinline muted></video>
+            <button id="stopSharingBtn" class="btn btn-danger" onclick="stopScreenShare()">
+                ⏹️ Stop Sharing
+            </button>
+            <div class="stats">
+                <div>Frame Rate: <span id="currentFps">0</span> FPS</div>
+                <div>Connected Displays: <span id="displayCount">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Browser Compatibility Warning -->
+    <div id="compatibilityWarning" class="alert alert-warning" style="display: none;">
+        ⚠️ Screen sharing is not supported in your browser. Please use Chrome, Firefox, or Edge.
+    </div>
+</div>
+
+<style>
+    .presenter-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #e0e0e0;
+    }
+
+    .header h1 {
+        margin: 0;
+        color: #2c3e50;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+
+    .status-badge {
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .status-badge.connected {
+        background: #27ae60;
+        color: white;
+    }
+
+    .status-badge.disconnected {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .card {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+    }
+
+    .card h2 {
+        margin-top: 0;
+        color: #34495e;
+    }
+
+    .info-text {
+        color: #7f8c8d;
+        margin-bottom: 20px;
+    }
+
+    .settings-row {
+        margin-top: 15px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .settings-row label {
+        font-weight: 600;
+        color: #34495e;
+    }
+
+    .presenting-indicator {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: #27ae60;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        font-weight: 600;
+    }
+
+    .pulse-dot {
+        width: 12px;
+        height: 12px;
+        background: white;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.5;
+            transform: scale(1.2);
+        }
+    }
+
+    #localPreview {
+        width: 100%;
+        max-width: 800px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        border: 2px solid #e0e0e0;
+    }
+
+    .stats {
+        display: flex;
+        gap: 30px;
+        padding: 15px;
+        background: #ecf0f1;
+        border-radius: 8px;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .alert {
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .alert-warning {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        color: #856404;
+    }
+</style>
+
+<script>
+let websocket = null;
+let peerConnection = null;
+let screenStream = null;
+let canvasInterval = null;
+let sessionId = null;
+let frameRate = 10;
+const presenterId = 'presenter_' + Math.random().toString(36).substr(2, 9);
+
+// Check browser compatibility
+window.addEventListener('load', () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        document.getElementById('compatibilityWarning').style.display = 'block';
+        document.getElementById('startSharingBtn').disabled = true;
+    }
+    loadSessions();
+});
+
+// Load sessions
+async function loadSessions() {
+    try {
+        const response = await apiRequest('/qm/sessions/live');
+        const sessions = await response.json();
+
+        const select = document.getElementById('sessionSelect');
+        sessions.forEach(session => {
+            const option = document.createElement('option');
+            option.value = session.id;
+            option.textContent = `${session.name} (${session.status})`;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Failed to load sessions:', error);
+        showAlert('Failed to load sessions', 'error');
+    }
+}
+
+// Session selection
+document.getElementById('sessionSelect').addEventListener('change', async (e) => {
+    sessionId = e.target.value;
+    if (sessionId) {
+        await connectWebSocket();
+    } else if (websocket) {
+        websocket.close();
+    }
+});
+
+// FPS selection
+document.getElementById('fpsSelect').addEventListener('change', (e) => {
+    frameRate = parseInt(e.target.value);
+});
+
+// Connect WebSocket
+async function connectWebSocket() {
+    if (websocket) {
+        websocket.close();
+    }
+
+    const token = getAuthToken();
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/presenter/${sessionId}?token=${token}`;
+
+    websocket = new WebSocket(wsUrl);
+
+    websocket.onopen = () => {
+        console.log('WebSocket connected');
+        document.getElementById('connectionStatus').textContent = 'Connected';
+        document.getElementById('connectionStatus').className = 'status-badge connected';
+    };
+
+    websocket.onclose = () => {
+        console.log('WebSocket disconnected');
+        document.getElementById('connectionStatus').textContent = 'Disconnected';
+        document.getElementById('connectionStatus').className = 'status-badge disconnected';
+    };
+
+    websocket.onmessage = async (event) => {
+        const message = JSON.parse(event.data);
+        console.log('WebSocket message:', message);
+
+        // Handle WebRTC answer from display
+        if (message.event === 'webrtc.answer') {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription({
+                type: 'answer',
+                sdp: message.sdp
+            }));
+        }
+
+        // Handle ICE candidate from display
+        if (message.event === 'webrtc.ice.display') {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
+        }
+    };
+}
+
+// Start screen sharing
+async function startScreenShare() {
+    if (!sessionId) {
+        showAlert('Please select a session first', 'error');
+        return;
+    }
+
+    try {
+        // Get screen stream
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: 'always',
+                displaySurface: 'window'
+            },
+            audio: false
+        });
+
+        // Show local preview
+        document.getElementById('localPreview').srcObject = screenStream;
+
+        // Setup WebRTC
+        await setupWebRTC();
+
+        // Show presenting state
+        document.getElementById('notPresentingState').style.display = 'none';
+        document.getElementById('presentingState').style.display = 'block';
+
+        // Notify server
+        websocket.send(JSON.stringify({
+            action: 'start-presenting',
+            presenter_id: presenterId
+        }));
+
+        // Handle stream ending
+        screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+            stopScreenShare();
+        });
+
+    } catch (error) {
+        console.error('Failed to start screen sharing:', error);
+        showAlert('Failed to start screen sharing: ' + error.message, 'error');
+    }
+}
+
+// Setup WebRTC peer connection
+async function setupWebRTC() {
+    // Create peer connection
+    peerConnection = new RTCPeerConnection({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' }
+        ]
+    });
+
+    // Create canvas for frame rate control
+    const video = document.createElement('video');
+    video.srcObject = screenStream;
+    video.play();
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Wait for video to load
+    await new Promise(resolve => {
+        video.onloadedmetadata = () => {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            resolve();
+        };
+    });
+
+    // Capture frames at controlled FPS
+    const canvasStream = canvas.captureStream(frameRate);
+    canvasInterval = setInterval(() => {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        document.getElementById('currentFps').textContent = frameRate;
+    }, 1000 / frameRate);
+
+    // Add canvas stream to peer connection
+    canvasStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, canvasStream);
+    });
+
+    // Handle ICE candidates
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            websocket.send(JSON.stringify({
+                type: 'ice-candidate',
+                candidate: event.candidate,
+                presenter_id: presenterId
+            }));
+        }
+    };
+
+    // Create and send offer
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    websocket.send(JSON.stringify({
+        type: 'offer',
+        sdp: offer.sdp,
+        presenter_id: presenterId
+    }));
+}
+
+// Stop screen sharing
+function stopScreenShare() {
+    // Stop canvas interval
+    if (canvasInterval) {
+        clearInterval(canvasInterval);
+        canvasInterval = null;
+    }
+
+    // Stop screen stream
+    if (screenStream) {
+        screenStream.getTracks().forEach(track => track.stop());
+        screenStream = null;
+    }
+
+    // Close peer connection
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+
+    // Notify server
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        websocket.send(JSON.stringify({
+            action: 'stop-presenting',
+            presenter_id: presenterId
+        }));
+    }
+
+    // Reset UI
+    document.getElementById('notPresentingState').style.display = 'block';
+    document.getElementById('presentingState').style.display = 'none';
+    document.getElementById('localPreview').srcObject = null;
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    stopScreenShare();
+    if (websocket) {
+        websocket.close();
+    }
+});
+</script>
+{% endblock %}

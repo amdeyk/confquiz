@@ -33,6 +33,11 @@ async def get_db():
             await session.close()
 
 
+# Get async session maker (for manual session management)
+def get_async_session_maker():
+    return AsyncSessionLocal
+
+
 # Initialize database tables
 async def init_db():
     async with engine.begin() as conn:

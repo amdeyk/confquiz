@@ -21,14 +21,27 @@ async def get_redis():
 async def broadcast_slide_change(session_id: int, slide_id: int, mode: str):
     """Broadcast slide change to all WebSocket clients"""
     from routers.ws_router import manager
-    await manager.broadcast_to_session(
-        session_id,
-        {
-            "event": "slide.change",
-            "slide_id": slide_id,
-            "mode": mode
-        }
-    )
+    from database import get_async_session_maker
+
+    # Get slide details for broadcast
+    async_session = get_async_session_maker()
+    async with async_session() as session:
+        result = await session.execute(select(Slide).where(Slide.id == slide_id))
+        slide = result.scalar_one_or_none()
+
+        if slide:
+            await manager.broadcast_to_session(
+                session_id,
+                {
+                    "event": "slide.update",
+                    "slide": {
+                        "id": slide.id,
+                        "png_path": slide.png_path,
+                        "slide_index": slide.slide_index
+                    },
+                    "mode": mode
+                }
+            )
 
 
 # ============ Session Control ============

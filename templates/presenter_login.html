@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Presenter Login - Quiz System{% endblock %}
+
+{% block content %}
+{% if settings.conference_name %}
+<div class="conference-brand">
+    <h2>{{ settings.conference_name }}</h2>
+    <p>Quiz Competition System</p>
+</div>
+{% endif %}
+<div class="login-page">
+    <div class="login-container">
+        <h1>🎥 Presenter Login</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+        </form>
+        <p class="back-link"><a href="/">← Back to Home</a></p>
+    </div>
+</div>
+
+<style>
+    .conference-brand {
+        text-align: center;
+        color: white;
+        margin-bottom: 20px;
+    }
+
+    .conference-brand h2 {
+        font-size: 2rem;
+        margin: 0;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .conference-brand p {
+        font-size: 1rem;
+        margin-top: 5px;
+        opacity: 0.9;
+    }
+
+    .login-page {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 70vh;
+    }
+
+    .login-container {
+        background: white;
+        padding: 40px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        width: 100%;
+        max-width: 400px;
+    }
+
+    .login-container h1 {
+        text-align: center;
+        margin-bottom: 30px;
+        color: #2c3e50;
+    }
+
+    .back-link {
+        text-align: center;
+        margin-top: 20px;
+    }
+
+    .back-link a {
+        color: #3498db;
+        text-decoration: none;
+    }
+
+    .back-link a:hover {
+        text-decoration: underline;
+    }
+</style>
+
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const response = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
+
+        if (!response.ok) {
+            throw new Error('Login failed');
+        }
+
+        const data = await response.json();
+        setAuthToken(data.access_token);
+
+        // Redirect to presenter dashboard
+        if (data.role === 'presenter' || data.role === 'admin') {
+            window.location.href = '/presenter/dashboard';
+        } else {
+            showAlert('Invalid role. Presenter access required.', 'error');
+        }
+    } catch (error) {
+        showAlert('Login failed. Please check your credentials.', 'error');
+    }
+});
+</script>
+{% endblock %}

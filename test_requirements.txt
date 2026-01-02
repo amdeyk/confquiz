@@ -1,0 +1,15 @@
+# Test Requirements for Quiz Application
+# Install with: pip install -r test_requirements.txt
+
+# HTTP requests
+requests>=2.31.0
+
+# WebSocket testing
+websocket-client>=1.6.0
+
+# Colored terminal output
+colorama>=0.4.6
+
+# Optional: For advanced testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0

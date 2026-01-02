@@ -18,6 +18,48 @@
                 <button class="btn btn-primary" onclick="showSection('sessions')">Manage Sessions</button>
                 <button class="btn btn-primary" onclick="showSection('slides')">Upload Slides</button>
                 <button class="btn btn-primary" onclick="showSection('qm-users')">Create Quiz Master</button>
+                <button class="btn btn-primary" onclick="showSection('settings')">Display Settings</button>
+            </div>
+        </div>
+
+        <!-- Settings Section -->
+        <div id="settings-section" class="section" style="display:none;">
+            <div class="card">
+                <h2>Display Settings</h2>
+                <p class="info-text">Configure how slides are displayed on the main screen</p>
+
+                <div class="form-group">
+                    <label>Display Mode</label>
+                    <select id="displayModeSelect" onchange="toggleScreenShareSettings()">
+                        <option value="png_slides">PNG Slides (Default)</option>
+                        <option value="screen_share">Screen Share (WebRTC)</option>
+                    </select>
+                </div>
+
+                <div id="screenShareSettings" style="display:none;">
+                    <div class="form-group">
+                        <label>Frame Rate</label>
+                        <select id="fpsSettingSelect">
+                            <option value="5">5 FPS (Low bandwidth)</option>
+                            <option value="10" selected>10 FPS (Recommended)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quality</label>
+                        <select id="qualitySettingSelect">
+                            <option value="0.5">Low Quality</option>
+                            <option value="0.7" selected>Medium Quality</option>
+                            <option value="0.9">High Quality</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn btn-success" onclick="saveDisplaySettings()">Save Settings</button>
+
+                <div class="alert alert-info" style="margin-top: 20px;">
+                    <strong>Note:</strong> Screen share mode requires a presenter to share their screen.
+                    PNG slides mode uses uploaded presentation files.
+                </div>
             </div>
         </div>
 
@@ -119,6 +161,22 @@
                         <input type="password" id="qmPassword" required>
                     </div>
                     <button type="submit" class="btn btn-success">Create Quiz Master</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Create Presenter User</h2>
+                <p class="info-text">Presenters can share their screen to display PowerPoint presentations</p>
+                <form id="addPresenterForm">
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" id="presenterUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Password</label>
+                        <input type="password" id="presenterPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Create Presenter</button>
                 </form>
             </div>
         </div>
@@ -336,6 +394,8 @@ function showSection(section) {
         loadSessions();
     } else if (section === 'slides') {
         loadSlideSessions();
+    } else if (section === 'settings') {
+        loadDisplaySettings();
     }
 }
 
@@ -471,6 +531,25 @@ document.getElementById('addQMForm').addEventListener('submit', async (e) => {
         document.getElementById('addQMForm').reset();
     } catch (error) {
         showAlert('Error creating Quiz Master: ' + error.message, 'error');
+    }
+});
+
+document.getElementById('addPresenterForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    try {
+        await apiRequest('/admin/users/presenter', {
+            method: 'POST',
+            body: JSON.stringify({
+                username: document.getElementById('presenterUsername').value,
+                password: document.getElementById('presenterPassword').value
+            })
+        });
+
+        showAlert('Presenter created successfully!', 'success');
+        document.getElementById('addPresenterForm').reset();
+    } catch (error) {
+        showAlert('Error creating Presenter: ' + error.message, 'error');
     }
 });
 
@@ -705,6 +784,62 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
+
+// Toggle screen share settings visibility
+function toggleScreenShareSettings() {
+    const displayMode = document.getElementById('displayModeSelect').value;
+    const screenShareSettings = document.getElementById('screenShareSettings');
+    screenShareSettings.style.display = displayMode === 'screen_share' ? 'block' : 'none';
+}
+
+// Load display settings
+async function loadDisplaySettings() {
+    try {
+        const response = await apiRequest('/admin/settings');
+        const settings = await response.json();
+
+        if (settings.display_mode) {
+            document.getElementById('displayModeSelect').value = settings.display_mode;
+            toggleScreenShareSettings();
+        }
+        if (settings.screen_share_fps) {
+            document.getElementById('fpsSettingSelect').value = settings.screen_share_fps;
+        }
+        if (settings.screen_share_quality) {
+            document.getElementById('qualitySettingSelect').value = settings.screen_share_quality;
+        }
+    } catch (error) {
+        console.error('Failed to load display settings:', error);
+    }
+}
+
+// Save display settings
+async function saveDisplaySettings() {
+    const displayMode = document.getElementById('displayModeSelect').value;
+    const fps = document.getElementById('fpsSettingSelect').value;
+    const quality = document.getElementById('qualitySettingSelect').value;
+
+    try {
+        // Update display mode
+        await apiRequest(`/admin/settings/display_mode?value=${displayMode}`, {
+            method: 'PUT'
+        });
+
+        // Update FPS setting
+        await apiRequest(`/admin/settings/screen_share_fps?value=${fps}`, {
+            method: 'PUT'
+        });
+
+        // Update quality setting
+        await apiRequest(`/admin/settings/screen_share_quality?value=${quality}`, {
+            method: 'PUT'
+        });
+
+        showAlert('Display settings saved successfully', 'success');
+    } catch (error) {
+        showAlert('Failed to save settings: ' + error.message, 'error');
+    }
+}
 
 function logout() {
     clearAuthToken();
