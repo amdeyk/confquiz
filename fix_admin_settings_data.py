@@ -3,6 +3,14 @@
 Fix script to insert missing admin_settings data
 Run this if the admin_settings table exists but has no/incomplete data
 """
+import sys
+import os
+from pathlib import Path
+
+# Add current directory to path so we can import modules
+current_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(current_dir))
+
 import asyncio
 from sqlalchemy import select
 from database import AsyncSessionLocal
