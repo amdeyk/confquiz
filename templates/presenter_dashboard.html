@@ -199,7 +199,6 @@
 let websocket = null;
 let peerConnection = null;
 let screenStream = null;
-let canvasInterval = null;
 let sessionId = null;
 let frameRate = 10;
 const presenterId = 'presenter_' + Math.random().toString(36).substr(2, 9);
@@ -265,9 +264,21 @@ async function connectWebSocket() {
     };
 
     websocket.onclose = () => {
-        console.log('WebSocket disconnected');
-        document.getElementById('connectionStatus').textContent = 'Disconnected';
+        console.log('WebSocket disconnected, attempting to reconnect...');
+        document.getElementById('connectionStatus').textContent = 'Reconnecting...';
         document.getElementById('connectionStatus').className = 'status-badge disconnected';
+
+        // Attempt to reconnect after 2 seconds
+        setTimeout(() => {
+            if (sessionId) {
+                console.log('Reconnecting WebSocket...');
+                connectWebSocket();
+            }
+        }, 2000);
+    };
+
+    websocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
     };
 
     websocket.onmessage = async (event) => {
@@ -317,10 +328,12 @@ async function startScreenShare() {
         document.getElementById('presentingState').style.display = 'block';
 
         // Notify server
-        websocket.send(JSON.stringify({
-            action: 'start-presenting',
-            presenter_id: presenterId
-        }));
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(JSON.stringify({
+                action: 'start-presenting',
+                presenter_id: presenterId
+            }));
+        }
 
         // Handle stream ending
         screenStream.getVideoTracks()[0].addEventListener('ended', () => {
@@ -388,65 +401,55 @@ async function setupWebRTC() {
         sendStatusUpdate();
     };
 
-    // Create canvas for frame rate control with high quality
-    const video = document.createElement('video');
-    video.srcObject = screenStream;
-    video.play();
+    // Use original screen stream directly for maximum quality
+    const videoTrack = screenStream.getVideoTracks()[0];
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', {
-        alpha: false,
-        desynchronized: true
+    // Get current settings
+    const settings = videoTrack.getSettings();
+    console.log(`Screen capture resolution: ${settings.width}x${settings.height}`);
+
+    // Apply constraints to limit frame rate but maintain quality
+    await videoTrack.applyConstraints({
+        frameRate: { ideal: frameRate, max: frameRate },
+        width: { ideal: settings.width },
+        height: { ideal: settings.height }
     });
 
-    // Wait for video to load
-    await new Promise(resolve => {
-        video.onloadedmetadata = () => {
-            // Use full resolution for best quality
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            console.log(`Canvas resolution: ${canvas.width}x${canvas.height}`);
-            resolve();
-        };
-    });
+    // Add track to peer connection with maximum quality
+    const sender = peerConnection.addTrack(videoTrack, screenStream);
 
-    // Enable high quality rendering
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    // Capture frames at controlled FPS - use frameRate parameter for automatic capture
-    const canvasStream = canvas.captureStream(frameRate);
-
-    // Draw frames continuously at controlled rate
-    canvasInterval = setInterval(() => {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        document.getElementById('currentFps').textContent = frameRate;
-    }, 1000 / frameRate);
-
-    // Add canvas stream to peer connection with quality constraints
-    const videoTrack = canvasStream.getVideoTracks()[0];
-    const sender = peerConnection.addTrack(videoTrack, canvasStream);
-
-    // Set encoding parameters for higher quality
+    // Set encoding parameters for very high quality
     const parameters = sender.getParameters();
     if (!parameters.encodings || parameters.encodings.length === 0) {
         parameters.encodings = [{}];
     }
 
-    // Set high bitrate for better quality (2 Mbps max, 1 Mbps target)
-    parameters.encodings[0].maxBitrate = 2000000; // 2 Mbps
+    // Set very high bitrate for excellent quality (5 Mbps max)
+    parameters.encodings[0].maxBitrate = 5000000; // 5 Mbps for high quality
     parameters.encodings[0].maxFramerate = frameRate;
+    parameters.encodings[0].scaleResolutionDownBy = 1.0; // No downscaling
 
     await sender.setParameters(parameters);
 
+    console.log(`WebRTC encoding: ${frameRate} FPS, 5 Mbps max bitrate`);
+
+    // Update FPS display
+    document.getElementById('currentFps').textContent = frameRate;
+
     // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            websocket.send(JSON.stringify({
-                type: 'ice-candidate',
-                candidate: event.candidate,
-                presenter_id: presenterId
-            }));
+        if (event.candidate && websocket && websocket.readyState === WebSocket.OPEN) {
+            try {
+                websocket.send(JSON.stringify({
+                    type: 'ice-candidate',
+                    candidate: event.candidate,
+                    presenter_id: presenterId
+                }));
+            } catch (error) {
+                console.error('[WebRTC] Failed to send ICE candidate:', error);
+            }
+        } else if (event.candidate) {
+            console.warn('[WebRTC] Cannot send ICE candidate, WebSocket not ready');
         }
     };
 
@@ -461,21 +464,26 @@ async function setupWebRTC() {
 
     await peerConnection.setLocalDescription(offer);
 
-    websocket.send(JSON.stringify({
-        type: 'offer',
-        sdp: offer.sdp,
-        presenter_id: presenterId
-    }));
+    if (websocket && websocket.readyState === WebSocket.OPEN) {
+        try {
+            websocket.send(JSON.stringify({
+                type: 'offer',
+                sdp: offer.sdp,
+                presenter_id: presenterId
+            }));
+            console.log('[WebRTC] Offer sent successfully');
+        } catch (error) {
+            console.error('[WebRTC] Failed to send offer:', error);
+            throw new Error('Failed to send WebRTC offer: WebSocket error');
+        }
+    } else {
+        console.error('[WebRTC] Cannot send offer: WebSocket not connected');
+        throw new Error('WebSocket not connected. Please wait for reconnection.');
+    }
 }
 
 // Stop screen sharing
 function stopScreenShare() {
-    // Stop canvas interval
-    if (canvasInterval) {
-        clearInterval(canvasInterval);
-        canvasInterval = null;
-    }
-
     // Stop screen stream
     if (screenStream) {
         screenStream.getTracks().forEach(track => track.stop());
@@ -504,19 +512,26 @@ function stopScreenShare() {
 
 // Send status update to admin dashboard
 function sendStatusUpdate() {
-    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+        console.log('[Status] WebSocket not ready, skipping status update');
+        return;
+    }
 
-    const status = {
-        action: 'status-update',
-        presenter_id: presenterId,
-        is_presenting: !!screenStream,
-        webrtc_state: peerConnection ? peerConnection.connectionState : 'disconnected',
-        ice_state: peerConnection ? peerConnection.iceConnectionState : 'disconnected',
-        frame_rate: frameRate,
-        resolution: screenStream ? `${screenStream.getVideoTracks()[0].getSettings().width}x${screenStream.getVideoTracks()[0].getSettings().height}` : null
-    };
+    try {
+        const status = {
+            action: 'status-update',
+            presenter_id: presenterId,
+            is_presenting: !!screenStream,
+            webrtc_state: peerConnection ? peerConnection.connectionState : 'disconnected',
+            ice_state: peerConnection ? peerConnection.iceConnectionState : 'disconnected',
+            frame_rate: frameRate,
+            resolution: screenStream ? `${screenStream.getVideoTracks()[0].getSettings().width}x${screenStream.getVideoTracks()[0].getSettings().height}` : null
+        };
 
-    websocket.send(JSON.stringify(status));
+        websocket.send(JSON.stringify(status));
+    } catch (error) {
+        console.error('[Status] Failed to send status update:', error);
+    }
 }
 
 // Send periodic status updates
