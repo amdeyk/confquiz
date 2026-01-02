@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from typing import List
 
 from database import get_db
@@ -63,15 +64,14 @@ async def upload_deck(
             db.add(slide)
 
         await db.commit()
-        await db.refresh(deck)
 
-        # Load slides
+        # Refresh deck with eager-loaded slides to avoid lazy loading issues
         result = await db.execute(
-            select(Slide)
-            .where(Slide.deck_id == deck.id)
-            .order_by(Slide.slide_index)
+            select(Deck)
+            .where(Deck.id == deck.id)
+            .options(selectinload(Deck.slides))
         )
-        deck.slides = result.scalars().all()
+        deck = result.scalar_one()
 
         return deck
 
@@ -87,20 +87,13 @@ async def list_decks(
     current_user: User = Depends(get_current_admin)
 ):
     """List all decks in session"""
+    # Use eager loading to avoid lazy loading issues in async context
     result = await db.execute(
         select(Deck)
         .where(Deck.session_id == session_id)
+        .options(selectinload(Deck.slides))
     )
     decks = result.scalars().all()
-
-    # Load slides for each deck
-    for deck in decks:
-        result = await db.execute(
-            select(Slide)
-            .where(Slide.deck_id == deck.id)
-            .order_by(Slide.slide_index)
-        )
-        deck.slides = result.scalars().all()
 
     return decks
 

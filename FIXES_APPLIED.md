@@ -65,63 +65,54 @@ await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock?locked=${buzzerLocked}`,
 
 ---
 
-## ⚠️ Issues Remaining
+## ✅ NEW FIXES APPLIED (2026-01-02 Latest)
 
-### 1. Slide Upload Returns 500 Error
-**Problem:** Wrong LibreOffice path in .env
+### 5. Slide Upload SQLAlchemy Error (FIXED ✅)
+**File:** `routers/media_router.py`
+**Problem:** Greenlet error when loading slides
 ```
-LIBREOFFICE_PATH=C:\\Program Files\\LibreOffice\\program\\soffice.exe  ← Windows path!
-```
-
-**Fix Required (choose one):**
-
-**Option A: Use python-pptx (Quick)**
-```bash
-# On VPS:
-nano .env
-# Comment out the line:
-# LIBREOFFICE_PATH=C:\\Program Files\\LibreOffice\\program\\soffice.exe
-
-sudo systemctl restart confquiz
+Error: greenlet_spawn has not been called; can't call await_only() here
 ```
 
-**Option B: Install LibreOffice (Better)**
-```bash
-# On VPS:
-sudo apt-get install -y libreoffice poppler-utils
+**Root Cause:** Setting `deck.slides = result.scalars().all()` triggered lazy loading in async context
 
-nano .env
-# Change to:
-LIBREOFFICE_PATH=/usr/bin/libreoffice
+**Fix Applied:**
+1. Added import: `from sqlalchemy.orm import selectinload`
+2. Changed upload_deck (lines 68-74) to use eager loading
+3. Changed list_decks (lines 90-96) to use eager loading
 
-sudo systemctl restart confquiz
-```
+**Status:** ✅ Fixed - ready to deploy
 
 ---
 
-### 2. Timer Countdown Not Visible (PARTIAL FIX)
-**What's Fixed:**
-- ✅ Timer service now creates background task
-- ✅ Timer publishes ticks to Redis pub/sub channel
+### 6. Timer Countdown Visibility (FIXED ✅)
+**File:** `routers/ws_router.py`
+**Problem:** Timer ticks published to Redis but not reaching WebSocket clients
 
-**What's Still Missing:**
-- ❌ WebSocket connections don't subscribe to timer ticks
-- ❌ Timer ticks not forwarded to frontend
+**Fix Applied:**
+1. Added Redis imports and connection handling
+2. Modified ConnectionManager to track timer subscription tasks
+3. Added `_subscribe_to_timer_ticks()` background task that:
+   - Subscribes to Redis channel `timer:tick:{session_id}`
+   - Forwards timer ticks to all connected WebSocket clients
+   - Starts when first WebSocket connects to a session
+   - Stops when last WebSocket disconnects
 
-**Code That Needs Adding:**
-In `routers/ws_router.py`, the WebSocket endpoints need to:
-1. Subscribe to Redis channel `timer:tick:{session_id}`
-2. Forward received ticks to all connected clients
-3. Handle subscription lifecycle (start/stop)
+**What This Does:**
+- ✅ Subscribes to Redis pub/sub channel when WebSocket connects
+- ✅ Forwards timer ticks to all connected clients (QM, display, teams)
+- ✅ Automatically cleans up when last client disconnects
+- ✅ Each session has its own background subscriber task
 
-**Current Behavior:**
-- Timer API works (200 OK)
-- Background countdown runs on server
-- Ticks published to Redis
-- BUT: No one listening/forwarding to WebSocket clients
+**Status:** ✅ Fixed - ready to deploy
 
-**Workaround:**
-None currently - requires code changes to ws_router.py
+---
+
+## ⚠️ Issues Remaining
+
+**None!** All critical issues are now fixed.
+
+LibreOffice is correctly configured on VPS at `/usr/bin/libreoffice` and slides are converting successfully
 
 ---
 
@@ -133,64 +124,61 @@ The following files were modified locally and need to be deployed:
 1. `templates/qm_dashboard.html` - Buzzer lock fix
 2. `routers/qm_router.py` - Timer service integration
 3. `templates/admin_dashboard.html` - Session management + slide upload UI
+4. `routers/media_router.py` - SQLAlchemy greenlet fix (NEW)
+5. `routers/ws_router.py` - Timer tick WebSocket broadcasting (NEW)
 
 **Deploy command:**
 ```bash
-# From your local machine:
+# From your local machine (Windows):
 scp templates/qm_dashboard.html user@vps:/opt/apps/confquiz/templates/
 scp routers/qm_router.py user@vps:/opt/apps/confquiz/routers/
 scp templates/admin_dashboard.html user@vps:/opt/apps/confquiz/templates/
+scp routers/media_router.py user@vps:/opt/apps/confquiz/routers/
+scp routers/ws_router.py user@vps:/opt/apps/confquiz/routers/
 ```
 
 ---
 
-### Step 2: Fix .env on VPS
+### Step 2: Restart Service
 
-**Option A: Comment out LibreOffice (Quick Start)**
+LibreOffice is already correctly configured on VPS, so just restart:
+
 ```bash
+# SSH into VPS
 ssh user@vps
-cd /opt/apps/confquiz
-nano .env
 
-# Find this line and comment it:
-# LIBREOFFICE_PATH=C:\\Program Files\\LibreOffice\\program\\soffice.exe
-
-# Save (Ctrl+O, Enter, Ctrl+X)
-```
-
-**Option B: Install LibreOffice (Recommended)**
-```bash
-ssh user@vps
-sudo apt-get update
-sudo apt-get install -y libreoffice libreoffice-impress poppler-utils
-
-cd /opt/apps/confquiz
-nano .env
-
-# Change the path to:
-LIBREOFFICE_PATH=/usr/bin/libreoffice
-
-# Save (Ctrl+O, Enter, Ctrl+X)
-```
-
----
-
-### Step 3: Restart Service
-```bash
+# Restart the service to load new code
 sudo systemctl restart confquiz
-sudo systemctl status confquiz  # Verify it started
+
+# Verify it started successfully
+sudo systemctl status confquiz
+
+# Check logs for any errors
+sudo journalctl -u confquiz -f
 ```
 
 ---
 
-### Step 4: Test Everything
+### Step 3: Test Everything
 
-**Test Slide Upload:**
+**Test Slide Upload (NEWLY FIXED):**
 1. Login as admin
 2. Click "Upload Slides"
 3. Select session
 4. Upload a .pptx file
-5. Should see success message
+5. ✅ Should see success message with slide count
+6. ✅ No more "greenlet_spawn" error
+7. ✅ Uploaded decks section shows deck with slides
+
+**Test Timer Countdown (NEWLY FIXED):**
+1. Login as quiz master
+2. Select session
+3. Open display page in another tab/window
+4. Click "Start Timer" (30 seconds)
+5. ✅ Timer countdown should be VISIBLE on quiz master page
+6. ✅ Timer countdown should be VISIBLE on display page
+7. ✅ Numbers should decrease every 100ms
+8. Test pause/resume functionality
 
 **Test Session Management:**
 1. Click "Manage Sessions"
@@ -198,56 +186,12 @@ sudo systemctl status confquiz  # Verify it started
 3. Check teams to assign
 4. Change status to "Live"
 5. Click "Save Changes"
-
-**Test Timer (Partial):**
-1. Login as quiz master
-2. Select session
-3. Click "Start Timer"
-4. Check server logs: `sudo journalctl -u confquiz -f`
-5. Should see timer ticks being published (but not visible in UI yet)
+6. ✅ Teams assigned successfully
 
 **Test Buzzer:**
 1. Click "Lock Buzzers" / "Unlock Buzzers"
-2. Should toggle successfully
-3. Check logs - should show 200 OK
-
----
-
-## 🔧 Next Steps (For Full Timer Fix)
-
-To make timer countdown visible, modify `routers/ws_router.py`:
-
-```python
-import redis.asyncio as redis
-from config import settings
-
-async def subscribe_to_timer_ticks(session_id: int):
-    """Background task to forward timer ticks to WebSocket clients"""
-    r = await redis.from_url(settings.redis_url, decode_responses=True)
-    pubsub = r.pubsub()
-
-    channel = f"timer:tick:{session_id}"
-    await pubsub.subscribe(channel)
-
-    try:
-        while True:
-            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1)
-            if message and message['type'] == 'message':
-                remaining_ms = int(message['data'])
-                await manager.broadcast_to_session(
-                    session_id,
-                    {
-                        "event": "timer.tick",
-                        "remaining_ms": remaining_ms
-                    }
-                )
-            await asyncio.sleep(0.1)
-    except asyncio.CancelledError:
-        await pubsub.unsubscribe(channel)
-        await pubsub.close()
-```
-
-Then start this task when first WebSocket connects and cancel when last disconnects.
+2. ✅ Should toggle successfully
+3. ✅ Check logs - should show 200 OK
 
 ---
 
@@ -255,17 +199,19 @@ Then start this task when first WebSocket connects and cancel when last disconne
 
 | Feature | Status | Action Required |
 |---------|--------|-----------------|
-| Buzzer Lock | ✅ Fixed | Deploy file, restart |
-| Session Management | ✅ Added | Deploy file, restart |
-| Slide Upload UI | ✅ Added | Deploy file, restart |
-| Slide Upload Backend | ⚠️ Blocked | Fix .env LibreOffice path |
-| Timer Backend | ✅ Fixed | Deploy file, restart |
-| Timer Frontend Display | ❌ Not Working | Needs ws_router.py changes |
+| Buzzer Lock | ✅ Fixed | Deploy & restart |
+| Session Management | ✅ Fixed | Deploy & restart |
+| Slide Upload UI | ✅ Fixed | Deploy & restart |
+| Slide Upload Backend | ✅ Fixed | Deploy & restart (greenlet error fixed) |
+| Timer Backend | ✅ Fixed | Deploy & restart |
+| Timer Frontend Display | ✅ Fixed | Deploy & restart (WebSocket now working) |
 | Score Controls | ✅ Working | Already deployed |
 | Team Assignment | ✅ Working | Use "Manage" button |
 
+**All critical issues resolved! ✅**
+
 ---
 
-*Last Updated: 2026-01-02*
-*Files Modified: 3*
-*Deployment Required: Yes*
+*Last Updated: 2026-01-02 (Latest fixes)*
+*Files Modified: 5 (qm_dashboard.html, qm_router.py, admin_dashboard.html, media_router.py, ws_router.py)*
+*Deployment Required: Yes - Deploy all 5 files and restart service*

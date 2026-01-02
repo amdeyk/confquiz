@@ -1,8 +1,10 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 import json
 import asyncio
 from datetime import datetime
+import redis.asyncio as redis
+from config import settings
 
 router = APIRouter()
 
@@ -11,6 +13,8 @@ class ConnectionManager:
     def __init__(self):
         # {session_id: {role: [websocket, websocket, ...]}}
         self.active_connections: Dict[int, Dict[str, Set[WebSocket]]] = {}
+        # Track background timer subscription tasks
+        self.timer_tasks: Dict[int, asyncio.Task] = {}
 
     async def connect(self, websocket: WebSocket, session_id: int, role: str):
         await websocket.accept()
@@ -20,10 +24,27 @@ class ConnectionManager:
             self.active_connections[session_id][role] = set()
         self.active_connections[session_id][role].add(websocket)
 
+        # Start timer subscription for this session if not already running
+        if session_id not in self.timer_tasks:
+            self.timer_tasks[session_id] = asyncio.create_task(
+                self._subscribe_to_timer_ticks(session_id)
+            )
+
     def disconnect(self, websocket: WebSocket, session_id: int, role: str):
         if session_id in self.active_connections:
             if role in self.active_connections[session_id]:
                 self.active_connections[session_id][role].discard(websocket)
+
+                # If no more connections for this session, stop timer subscription
+                has_connections = any(
+                    len(connections) > 0
+                    for connections in self.active_connections[session_id].values()
+                )
+                if not has_connections:
+                    if session_id in self.timer_tasks:
+                        self.timer_tasks[session_id].cancel()
+                        del self.timer_tasks[session_id]
+                    del self.active_connections[session_id]
 
     async def broadcast_to_session(self, session_id: int, message: dict, role: str = None):
         """Broadcast to specific role or all roles in session"""
@@ -46,6 +67,52 @@ class ConnectionManager:
                         await connection.send_json(message)
                     except:
                         self.disconnect(connection, session_id, role_key)
+
+    async def _subscribe_to_timer_ticks(self, session_id: int):
+        """Background task to subscribe to Redis timer ticks and forward to WebSocket clients"""
+        r = None
+        pubsub = None
+        try:
+            r = await redis.from_url(settings.redis_url, decode_responses=True)
+            pubsub = r.pubsub()
+
+            channel = f"timer:tick:{session_id}"
+            await pubsub.subscribe(channel)
+
+            # Listen for timer tick messages
+            while True:
+                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                if message and message['type'] == 'message':
+                    try:
+                        remaining_ms = int(message['data'])
+                        # Broadcast timer tick to all connected clients
+                        await self.broadcast_to_session(
+                            session_id,
+                            {
+                                "event": "timer.tick",
+                                "remaining_ms": remaining_ms
+                            }
+                        )
+                    except (ValueError, KeyError):
+                        pass  # Ignore malformed messages
+                await asyncio.sleep(0.1)
+
+        except asyncio.CancelledError:
+            # Task was cancelled, cleanup
+            pass
+        finally:
+            # Cleanup Redis connection
+            if pubsub:
+                try:
+                    await pubsub.unsubscribe(channel)
+                    await pubsub.close()
+                except:
+                    pass
+            if r:
+                try:
+                    await r.close()
+                except:
+                    pass
 
 
 manager = ConnectionManager()
