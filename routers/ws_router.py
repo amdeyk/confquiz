@@ -172,37 +172,66 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
             # Handle buzz event
             if message.get("action") == "buzz":
                 team_id = message.get("team_id")
-                device_id = message.get("device_id")
+                device_id = message.get("device_id", "default")
 
-                # Process buzz (integrate with Redis)
-                timestamp = datetime.utcnow().isoformat()
+                # Connect to Redis
+                r = await redis.from_url(settings.redis_url, decode_responses=True)
 
-                # Broadcast buzz to all relevant clients
-                await manager.broadcast_to_session(
-                    session_id,
-                    {
+                try:
+                    # Check if buzzers are locked
+                    buzzer_lock_key = f"buzzer:lock:{session_id}"
+                    is_locked = await r.get(buzzer_lock_key)
+
+                    if is_locked:
+                        # Buzzers are locked, reject the buzz
+                        await websocket.send_json({
+                            "event": "buzz.rejected",
+                            "reason": "Buzzers are locked"
+                        })
+                        continue
+
+                    # Check if team already buzzed
+                    buzzer_queue_key = f"buzzer:{session_id}"
+                    existing_buzzers = await r.lrange(buzzer_queue_key, 0, -1)
+
+                    if str(team_id) in existing_buzzers:
+                        # Team already in queue
+                        await websocket.send_json({
+                            "event": "buzz.rejected",
+                            "reason": "Already buzzed"
+                        })
+                        continue
+
+                    # Add to buzzer queue
+                    await r.rpush(buzzer_queue_key, str(team_id))
+
+                    # Set as first buzzer if queue was empty
+                    first_buzzer_key = f"buzzer:first:{session_id}"
+                    first_buzzer = await r.get(first_buzzer_key)
+                    if not first_buzzer:
+                        await r.set(first_buzzer_key, str(team_id))
+
+                    timestamp = datetime.utcnow().isoformat()
+
+                    # Broadcast buzz to all clients
+                    buzz_event = {
                         "event": "buzzer.update",
                         "team_id": team_id,
                         "timestamp": timestamp
-                    },
-                    role="qm"
-                )
+                    }
 
-                await manager.broadcast_to_session(
-                    session_id,
-                    {
-                        "event": "buzzer.update",
-                        "team_id": team_id,
+                    await manager.broadcast_to_session(session_id, buzz_event, role="qm")
+                    await manager.broadcast_to_session(session_id, buzz_event, role="display")
+                    await manager.broadcast_to_session(session_id, buzz_event, role="team")
+
+                    # Send confirmation to buzzing team
+                    await websocket.send_json({
+                        "event": "buzz.confirmed",
                         "timestamp": timestamp
-                    },
-                    role="display"
-                )
+                    })
 
-                # Send confirmation to team
-                await websocket.send_json({
-                    "event": "buzz.confirmed",
-                    "timestamp": timestamp
-                })
+                finally:
+                    await r.close()
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, session_id, "team")

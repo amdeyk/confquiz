@@ -5,7 +5,7 @@ from typing import List
 
 from database import get_db
 from auth import get_current_quiz_master
-from models import User, Session, Slide, SlideMapping, TeamSession, Score, ScoreEvent
+from models import User, Session, Deck, Slide, SlideMapping, TeamSession, Score, ScoreEvent
 from schemas import SessionResponse, TimerStart, ScoreAdjustment
 import redis.asyncio as redis
 from config import settings
@@ -16,6 +16,19 @@ router = APIRouter()
 
 async def get_redis():
     return await redis.from_url(settings.redis_url, decode_responses=True)
+
+
+async def broadcast_slide_change(session_id: int, slide_id: int, mode: str):
+    """Broadcast slide change to all WebSocket clients"""
+    from routers.ws_router import manager
+    await manager.broadcast_to_session(
+        session_id,
+        {
+            "event": "slide.change",
+            "slide_id": slide_id,
+            "mode": mode
+        }
+    )
 
 
 # ============ Session Control ============
@@ -47,30 +60,64 @@ async def next_slide(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Get current slide and find next question slide
-    if session.current_slide_id:
-        result = await db.execute(select(Slide).where(Slide.id == session.current_slide_id))
-        current_slide = result.scalar_one_or_none()
+    # If no current slide, start with first slide from question deck
+    if not session.current_slide_id:
+        # Find first question deck
+        result = await db.execute(
+            select(Deck)
+            .where(Deck.session_id == session_id, Deck.deck_type == "question")
+            .limit(1)
+        )
+        question_deck = result.scalar_one_or_none()
 
-        if current_slide:
-            # Find next slide in same deck
+        if question_deck:
+            # Get first slide
             result = await db.execute(
                 select(Slide)
-                .where(
-                    Slide.deck_id == current_slide.deck_id,
-                    Slide.slide_index > current_slide.slide_index
-                )
+                .where(Slide.deck_id == question_deck.id)
                 .order_by(Slide.slide_index)
                 .limit(1)
             )
-            next_slide = result.scalar_one_or_none()
+            first_slide = result.scalar_one_or_none()
 
-            if next_slide:
-                session.current_slide_id = next_slide.id
+            if first_slide:
+                session.current_slide_id = first_slide.id
                 session.mode = "question"
                 await db.commit()
 
-                return {"message": "Moved to next slide", "slide_id": next_slide.id}
+                # Broadcast slide change
+                await broadcast_slide_change(session_id, first_slide.id, "question")
+
+                return {"message": "Started quiz with first slide", "slide_id": first_slide.id}
+
+        raise HTTPException(status_code=400, detail="No question deck found")
+
+    # Get current slide and find next question slide
+    result = await db.execute(select(Slide).where(Slide.id == session.current_slide_id))
+    current_slide = result.scalar_one_or_none()
+
+    if current_slide:
+        # Find next slide in same deck
+        result = await db.execute(
+            select(Slide)
+            .where(
+                Slide.deck_id == current_slide.deck_id,
+                Slide.slide_index > current_slide.slide_index
+            )
+            .order_by(Slide.slide_index)
+            .limit(1)
+        )
+        next_slide = result.scalar_one_or_none()
+
+        if next_slide:
+            session.current_slide_id = next_slide.id
+            session.mode = "question"
+            await db.commit()
+
+            # Broadcast slide change
+            await broadcast_slide_change(session_id, next_slide.id, "question")
+
+            return {"message": "Moved to next slide", "slide_id": next_slide.id}
 
     raise HTTPException(status_code=400, detail="No next slide available")
 
@@ -102,14 +149,17 @@ async def prev_slide(
                 .order_by(Slide.slide_index.desc())
                 .limit(1)
             )
-            prev_slide = result.scalar_one_or_none()
+            prev_slide_result = result.scalar_one_or_none()
 
-            if prev_slide:
-                session.current_slide_id = prev_slide.id
+            if prev_slide_result:
+                session.current_slide_id = prev_slide_result.id
                 session.mode = "question"
                 await db.commit()
 
-                return {"message": "Moved to previous slide", "slide_id": prev_slide.id}
+                # Broadcast slide change
+                await broadcast_slide_change(session_id, prev_slide_result.id, "question")
+
+                return {"message": "Moved to previous slide", "slide_id": prev_slide_result.id}
 
     raise HTTPException(status_code=400, detail="No previous slide available")
 
@@ -143,6 +193,9 @@ async def reveal_answer(
     session.mode = "answer"
     await db.commit()
 
+    # Broadcast slide change
+    await broadcast_slide_change(session_id, mapping.answer_slide_id, "answer")
+
     return {"message": "Answer revealed", "slide_id": mapping.answer_slide_id}
 
 
@@ -169,6 +222,9 @@ async def jump_to_slide(
     session.current_slide_id = slide_id
     session.mode = mode
     await db.commit()
+
+    # Broadcast slide change
+    await broadcast_slide_change(session_id, slide_id, mode)
 
     return {"message": "Jumped to slide", "slide_id": slide_id}
 
