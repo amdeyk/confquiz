@@ -21,7 +21,7 @@
                     <strong>📅 Sessions:</strong> Create quiz sessions and assign teams
                 </div>
                 <div class="help-item">
-                    <strong>🎯 Quiz Master:</strong> Create QM accounts for game control
+                    <strong>🎯 Quiz Master & Presenter:</strong> Create QM and Presenter accounts
                 </div>
                 <div class="help-item">
                     <strong>📡 Display & Monitor:</strong> Configure display mode and monitor screen sharing
@@ -35,7 +35,7 @@
             <div class="action-buttons">
                 <button class="btn btn-primary" onclick="showSection('teams')">Manage Teams</button>
                 <button class="btn btn-primary" onclick="showSection('sessions')">Manage Sessions</button>
-                <button class="btn btn-primary" onclick="showSection('qm-users')">Create Quiz Master</button>
+                <button class="btn btn-primary" onclick="showSection('qm-users')">Create QM & Presenter</button>
                 <button class="btn btn-primary" onclick="showSection('settings')">📡 Display & Monitor</button>
             </div>
         </div>
@@ -49,12 +49,12 @@
                 <div class="form-group">
                     <label>Display Mode</label>
                     <select id="displayModeSelect" onchange="toggleScreenShareSettings()">
-                        <option value="png_slides">PNG Slides (Default)</option>
-                        <option value="screen_share">Screen Share (WebRTC)</option>
+                        <option value="png_slides">PNG Slides</option>
+                        <option value="screen_share" selected>Screen Share (WebRTC) - Default</option>
                     </select>
                 </div>
 
-                <div id="screenShareSettings" style="display:none;">
+                <div id="screenShareSettings" style="display:block;">
                     <div class="form-group">
                         <label>Frame Rate</label>
                         <select id="fpsSettingSelect">
@@ -123,6 +123,90 @@
                         <div class="monitor-item" style="flex: 1;">
                             <div class="monitor-label">Last Update</div>
                             <div id="lastUpdate" class="monitor-value">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Buzzer Heartbeat Monitor -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>🔔 Buzzer Heartbeat Monitor</h2>
+                <p class="info-text">Real-time monitoring of buzzer state synchronization (2s interval)</p>
+
+                <div class="signal-monitor">
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Heartbeat Status</div>
+                            <div id="buzzerHeartbeatStatus" class="status-indicator status-disconnected">
+                                <span class="status-dot"></span>
+                                <span class="status-text">No Data</span>
+                            </div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Buzzer Lock Status</div>
+                            <div id="buzzerLockStatus" class="monitor-value">--</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Teams in Queue</div>
+                            <div id="buzzerQueueCount" class="monitor-value">0</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">First Buzzer</div>
+                            <div id="firstBuzzer" class="monitor-value">None</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item" style="flex: 1;">
+                            <div class="monitor-label">Last Broadcast</div>
+                            <div id="buzzerLastBroadcast" class="monitor-value">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Score Heartbeat Monitor -->
+            <div class="card" style="margin-top: 20px;">
+                <h2>🏆 Score Heartbeat Monitor</h2>
+                <p class="info-text">Real-time monitoring of score synchronization (3s interval)</p>
+
+                <div class="signal-monitor">
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Heartbeat Status</div>
+                            <div id="scoreHeartbeatStatus" class="status-indicator status-disconnected">
+                                <span class="status-dot"></span>
+                                <span class="status-text">No Data</span>
+                            </div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Online Teams</div>
+                            <div id="onlineTeamCount" class="monitor-value">0</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Teams with Scores</div>
+                            <div id="scoreTeamCount" class="monitor-value">0</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Leading Team</div>
+                            <div id="leadingTeam" class="monitor-value">None</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item" style="flex: 1;">
+                            <div class="monitor-label">Last Broadcast</div>
+                            <div id="scoreLastBroadcast" class="monitor-value">--</div>
                         </div>
                     </div>
                 </div>
@@ -213,10 +297,10 @@
             </div>
         </div>
 
-        <!-- Quiz Master Users Section -->
+        <!-- Quiz Master & Presenter Users Section -->
         <div id="qm-users-section" class="section" style="display:none;">
             <div class="card">
-                <h2>Create Quiz Master User</h2>
+                <h2>Create Quiz Master</h2>
                 <form id="addQMForm">
                     <div class="form-group">
                         <label>Username</label>
@@ -231,7 +315,7 @@
             </div>
 
             <div class="card">
-                <h2>Create Presenter User</h2>
+                <h2>Create Presenter</h2>
                 <p class="info-text">Presenters can share their screen to display PowerPoint presentations</p>
                 <form id="addPresenterForm">
                     <div class="form-group">
@@ -880,6 +964,10 @@ function connectMonitorWebSocket() {
         } else if (data.event === 'presenter.stopped' || data.event === 'presenter.disconnected') {
             updatePresenterStatusIndicator('disconnected', 'Disconnected');
             updateWebRTCStatus('disconnected', 'Not Connected');
+        } else if (data.event === 'buzzer.status') {
+            updateBuzzerHeartbeatMonitor(data);
+        } else if (data.event === 'score.status') {
+            updateScoreHeartbeatMonitor(data);
         }
     };
 
@@ -930,6 +1018,58 @@ function updateWebRTCStatus(status, text) {
 
 function updateDisplayCount(count) {
     document.getElementById('displayCount').textContent = `${count} connected`;
+}
+
+function updateBuzzerHeartbeatMonitor(data) {
+    // Update heartbeat status indicator
+    const statusIndicator = document.getElementById('buzzerHeartbeatStatus');
+    statusIndicator.className = 'status-indicator status-connected';
+    statusIndicator.querySelector('.status-text').textContent = 'Active';
+
+    // Update buzzer lock status
+    const lockStatus = data.locked ? '🔒 Locked' : '🔓 Unlocked';
+    document.getElementById('buzzerLockStatus').textContent = lockStatus;
+
+    // Update queue count
+    const queueCount = data.total_buzzers || 0;
+    document.getElementById('buzzerQueueCount').textContent = queueCount;
+
+    // Update first buzzer
+    if (data.queue && data.queue.length > 0) {
+        const firstTeam = data.queue[0].team_name || `Team ${data.queue[0].team_id}`;
+        document.getElementById('firstBuzzer').textContent = firstTeam;
+    } else {
+        document.getElementById('firstBuzzer').textContent = 'None';
+    }
+
+    // Update last broadcast time
+    document.getElementById('buzzerLastBroadcast').textContent = new Date().toLocaleTimeString();
+}
+
+function updateScoreHeartbeatMonitor(data) {
+    // Update heartbeat status indicator
+    const statusIndicator = document.getElementById('scoreHeartbeatStatus');
+    statusIndicator.className = 'status-indicator status-connected';
+    statusIndicator.querySelector('.status-text').textContent = 'Active';
+
+    // Update online team count
+    const onlineCount = data.online_teams || 0;
+    document.getElementById('onlineTeamCount').textContent = onlineCount;
+
+    // Update teams with scores count
+    const scoreCount = data.total_teams || 0;
+    document.getElementById('scoreTeamCount').textContent = scoreCount;
+
+    // Update leading team
+    if (data.scores && data.scores.length > 0) {
+        const leader = data.scores[0];
+        document.getElementById('leadingTeam').textContent = `${leader.team_name} (${leader.total})`;
+    } else {
+        document.getElementById('leadingTeam').textContent = 'None';
+    }
+
+    // Update last broadcast time
+    document.getElementById('scoreLastBroadcast').textContent = new Date().toLocaleTimeString();
 }
 
 // Initialize monitor when settings section is shown

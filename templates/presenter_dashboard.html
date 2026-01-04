@@ -750,6 +750,16 @@ setInterval(() => {
     }
 }, 5000);
 
+// Logout function
+function logout() {
+    stopScreenShare();
+    if (websocket) {
+        websocket.close();
+    }
+    clearAuthToken();
+    window.location.href = '/';
+}
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {
     stopScreenShare();

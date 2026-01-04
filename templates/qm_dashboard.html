@@ -18,17 +18,6 @@
     </div>
 
     <div id="controlPanel" style="display:none;">
-        <!-- Help Instructions -->
-        <div class="card help-card">
-            <h2>📖 Quick Guide</h2>
-            <div class="help-content">
-                <p><strong>Timer:</strong> Set duration and start when question is displayed. Pause/Reset as needed.</p>
-                <p><strong>Buzzers:</strong> Unlock when ready for teams to buzz. Lock to prevent buzzing. Clear queue after each question.</p>
-                <p><strong>Scores:</strong> Use quick buttons (+10, +5, +1, -1, -5, -10) or enter custom values. Undo last change if needed.</p>
-                <p><strong>Note:</strong> Slide navigation is handled by the Presenter. Focus on managing game flow!</p>
-            </div>
-        </div>
-
         <!-- Timer Controls -->
         <div class="card">
             <h2>Timer Control</h2>
@@ -60,6 +49,17 @@
         <div class="card">
             <h2>Score Management</h2>
             <div id="scoreControls"></div>
+        </div>
+
+        <!-- Help Instructions -->
+        <div class="card help-card">
+            <h2>📖 Quick Guide</h2>
+            <div class="help-content">
+                <p><strong>Timer:</strong> Set duration and start when question is displayed. Pause/Reset as needed.</p>
+                <p><strong>Buzzers:</strong> Unlock when ready for teams to buzz. Lock to prevent buzzing. Clear queue after each question.</p>
+                <p><strong>Scores:</strong> Use quick buttons (+10, +5, +1, -1, -5, -10) or enter custom values. Undo last change if needed.</p>
+                <p><strong>Note:</strong> Slide navigation is handled by the Presenter. Focus on managing game flow!</p>
+            </div>
         </div>
     </div>
 </div>
@@ -170,11 +170,13 @@
     .help-card h2 {
         color: white;
         margin-bottom: 15px;
+        font-size: 1.2rem;
     }
 
     .help-content p {
-        margin: 10px 0;
-        line-height: 1.6;
+        margin: 8px 0;
+        line-height: 1.5;
+        font-size: 0.9rem;
     }
 
     .help-content strong {
