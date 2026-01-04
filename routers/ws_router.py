@@ -15,6 +15,8 @@ class ConnectionManager:
         self.active_connections: Dict[int, Dict[str, Set[WebSocket]]] = {}
         # Track background timer subscription tasks
         self.timer_tasks: Dict[int, asyncio.Task] = {}
+        # Track buzzer heartbeat tasks
+        self.buzzer_heartbeat_tasks: Dict[int, asyncio.Task] = {}
 
     async def connect(self, websocket: WebSocket, session_id: int, role: str):
         await websocket.accept()
@@ -30,20 +32,33 @@ class ConnectionManager:
                 self._subscribe_to_timer_ticks(session_id)
             )
 
+        # Start buzzer heartbeat for this session if not already running
+        if session_id not in self.buzzer_heartbeat_tasks:
+            self.buzzer_heartbeat_tasks[session_id] = asyncio.create_task(
+                self._broadcast_buzzer_heartbeat(session_id)
+            )
+
     def disconnect(self, websocket: WebSocket, session_id: int, role: str):
         if session_id in self.active_connections:
             if role in self.active_connections[session_id]:
                 self.active_connections[session_id][role].discard(websocket)
 
-                # If no more connections for this session, stop timer subscription
+                # If no more connections for this session, stop background tasks
                 has_connections = any(
                     len(connections) > 0
                     for connections in self.active_connections[session_id].values()
                 )
                 if not has_connections:
+                    # Stop timer subscription
                     if session_id in self.timer_tasks:
                         self.timer_tasks[session_id].cancel()
                         del self.timer_tasks[session_id]
+
+                    # Stop buzzer heartbeat
+                    if session_id in self.buzzer_heartbeat_tasks:
+                        self.buzzer_heartbeat_tasks[session_id].cancel()
+                        del self.buzzer_heartbeat_tasks[session_id]
+
                     del self.active_connections[session_id]
 
     async def broadcast_to_session(self, session_id: int, message: dict, role: str = None):
@@ -108,6 +123,91 @@ class ConnectionManager:
                     await pubsub.close()
                 except:
                     pass
+            if r:
+                try:
+                    await r.close()
+                except:
+                    pass
+
+    async def _broadcast_buzzer_heartbeat(self, session_id: int):
+        """Background task to periodically broadcast buzzer state to all clients"""
+        r = None
+        try:
+            r = await redis.from_url(settings.redis_url, decode_responses=True)
+
+            while True:
+                try:
+                    # Read buzzer lock status
+                    buzzer_lock_key = f"buzzer:lock:{session_id}"
+                    is_locked = await r.get(buzzer_lock_key)
+
+                    # Read buzzer queue (sorted set with team_id:device_id as members)
+                    buzzer_queue_key = f"buzzer:{session_id}"
+                    queue_members = await r.zrange(buzzer_queue_key, 0, -1, withscores=True)
+
+                    # Read first buzzer
+                    first_buzzer_key = f"buzzer:first:{session_id}"
+                    first_buzzer_team_id = await r.get(first_buzzer_key)
+
+                    # Build buzzer queue data with team names
+                    buzzer_queue = []
+                    if queue_members:
+                        # Get database session to fetch team names
+                        from database import get_async_session_maker
+                        from models import Team, TeamSession
+                        from sqlalchemy import select
+
+                        async_session = get_async_session_maker()
+                        async with async_session() as db:
+                            for index, (member, score) in enumerate(queue_members):
+                                # member format: "team_id:device_id"
+                                parts = member.split(':', 1)
+                                team_id = int(parts[0]) if len(parts) > 0 else None
+                                device_id = parts[1] if len(parts) > 1 else "default"
+
+                                if team_id:
+                                    # Fetch team name
+                                    result = await db.execute(
+                                        select(Team.name)
+                                        .join(TeamSession, TeamSession.team_id == Team.id)
+                                        .where(
+                                            TeamSession.session_id == session_id,
+                                            Team.id == team_id
+                                        )
+                                    )
+                                    team_name = result.scalar_one_or_none()
+
+                                    buzzer_queue.append({
+                                        "team_id": team_id,
+                                        "team_name": team_name or f"Team {team_id}",
+                                        "device_id": device_id,
+                                        "timestamp": score,
+                                        "placement": index + 1
+                                    })
+
+                    # Broadcast buzzer state to all clients
+                    buzzer_state = {
+                        "event": "buzzer.status",
+                        "locked": bool(is_locked),
+                        "queue": buzzer_queue,
+                        "first_buzzer_team_id": int(first_buzzer_team_id) if first_buzzer_team_id else None,
+                        "total_buzzers": len(buzzer_queue)
+                    }
+
+                    await self.broadcast_to_session(session_id, buzzer_state)
+
+                except Exception as e:
+                    # Log error but continue heartbeat
+                    print(f"Error in buzzer heartbeat for session {session_id}: {e}")
+
+                # Wait 2 seconds before next heartbeat
+                await asyncio.sleep(2)
+
+        except asyncio.CancelledError:
+            # Task was cancelled, cleanup
+            pass
+        finally:
+            # Cleanup Redis connection
             if r:
                 try:
                     await r.close()

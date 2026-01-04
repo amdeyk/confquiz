@@ -633,6 +633,11 @@ function connectWebSocket() {
                         .then(snapshot => updateBuzzerQueue(snapshot.buzzer_queue));
                     break;
 
+                case 'buzzer.status':
+                    // Heartbeat update with complete buzzer state
+                    updateBuzzerQueue(data.queue || []);
+                    break;
+
                 case 'buzzer.cleared':
                     // Clear buzzer queue display
                     updateBuzzerQueue([]);

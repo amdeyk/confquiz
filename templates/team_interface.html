@@ -193,6 +193,7 @@
 <script>
 let ws = null;
 let sessionId = null;
+let teamId = null;
 let deviceId = null;
 
 async function init() {
@@ -200,6 +201,7 @@ async function init() {
         // Get current session
         const data = await apiRequest('/team/sessions/current');
         sessionId = data.session_id;
+        teamId = data.team_id;
         document.getElementById('teamName').textContent = data.team_name;
         document.getElementById('teamScore').textContent = data.score;
 
@@ -240,13 +242,49 @@ function connectWebSocket() {
 
     ws.on('buzzer.status', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
+        const buzzerButton = document.getElementById('buzzerButton');
+        const placementDiv = document.getElementById('placementDisplay');
+
         if (data.locked) {
             statusDiv.textContent = 'Buzzer Locked';
             statusDiv.style.color = '#e74c3c';
-            document.getElementById('buzzerButton').disabled = true;
+            buzzerButton.disabled = true;
         } else {
-            statusDiv.textContent = 'Ready';
-            statusDiv.style.color = '#2ecc71';
+            // Check if current team is in the queue
+            let teamInQueue = false;
+            let placement = null;
+
+            if (data.queue && data.queue.length > 0 && teamId) {
+                // Find this team in the queue
+                for (let i = 0; i < data.queue.length; i++) {
+                    if (data.queue[i].team_id === teamId) {
+                        teamInQueue = true;
+                        placement = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            if (teamInQueue) {
+                // Team is in queue, disable button and show placement
+                buzzerButton.disabled = true;
+                statusDiv.textContent = 'Buzzed!';
+                statusDiv.style.color = '#2ecc71';
+
+                const suffix = placement === 1 ? 'st' : placement === 2 ? 'nd' : placement === 3 ? 'rd' : 'th';
+                placementDiv.textContent = `You are ${placement}${suffix} (${data.total_buzzers} total)`;
+                placementDiv.className = 'placement-display';
+                if (placement === 1) {
+                    placementDiv.classList.add('placement-1st');
+                }
+            } else {
+                // Team not in queue, enable button if not locked
+                statusDiv.textContent = 'Ready';
+                statusDiv.style.color = '#2ecc71';
+                buzzerButton.disabled = false;
+                placementDiv.textContent = '';
+                placementDiv.className = 'placement-display';
+            }
         }
     });
 
