@@ -20,6 +20,18 @@
         </select>
     </div>
 
+    <!-- Help Instructions -->
+    <div class="help-banner">
+        <h3>📖 Quick Start Guide</h3>
+        <div class="help-steps">
+            <div class="step">1️⃣ Select your session above</div>
+            <div class="step">2️⃣ Open your PowerPoint presentation in full-screen mode</div>
+            <div class="step">3️⃣ Click "Start Screen Sharing" and select the presentation window</div>
+            <div class="step">4️⃣ Navigate slides using PowerPoint controls - they'll appear on the main display!</div>
+            <div class="step">💡 <strong>Tip:</strong> Use 10 FPS (recommended) for smooth presentation with good quality</div>
+        </div>
+    </div>
+
     <!-- Screen Sharing Controls -->
     <div class="card">
         <h2>Screen Sharing</h2>
@@ -88,6 +100,38 @@
         display: flex;
         gap: 15px;
         align-items: center;
+    }
+
+    .help-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .help-banner h3 {
+        margin: 0 0 15px 0;
+        color: white;
+        text-align: center;
+    }
+
+    .help-steps {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .help-steps .step {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 12px 15px;
+        border-radius: 8px;
+        border-left: 4px solid #ffd700;
+    }
+
+    .help-steps strong {
+        color: #ffd700;
     }
 
     .status-badge {

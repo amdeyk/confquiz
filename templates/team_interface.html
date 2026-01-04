@@ -9,6 +9,11 @@
         <button onclick="logout()" class="btn btn-danger btn-small">Logout</button>
     </div>
 
+    <!-- Help Instructions -->
+    <div class="help-banner">
+        <p>💡 <strong>How to Play:</strong> Watch the display screen for questions. When ready to answer, press the BUZZ button. Your placement in the queue will be shown below!</p>
+    </div>
+
     <div class="score-display">
         <h2>Your Score</h2>
         <div id="teamScore" class="score-value">0</div>
@@ -55,6 +60,25 @@
     .btn-small {
         padding: 8px 16px;
         font-size: 0.9rem;
+    }
+
+    .help-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        text-align: center;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .help-banner p {
+        margin: 0;
+        line-height: 1.6;
+    }
+
+    .help-banner strong {
+        color: #ffd700;
     }
 
     .score-display {

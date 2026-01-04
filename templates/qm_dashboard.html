@@ -18,13 +18,14 @@
     </div>
 
     <div id="controlPanel" style="display:none;">
-        <!-- Slide Controls -->
-        <div class="card">
-            <h2>Slide Navigation</h2>
-            <div class="control-buttons">
-                <button class="btn btn-warning" onclick="prevSlide()">← Previous</button>
-                <button class="btn btn-primary" onclick="nextSlide()">Next →</button>
-                <button class="btn btn-success" onclick="revealAnswer()">Reveal Answer</button>
+        <!-- Help Instructions -->
+        <div class="card help-card">
+            <h2>📖 Quick Guide</h2>
+            <div class="help-content">
+                <p><strong>Timer:</strong> Set duration and start when question is displayed. Pause/Reset as needed.</p>
+                <p><strong>Buzzers:</strong> Unlock when ready for teams to buzz. Lock to prevent buzzing. Clear queue after each question.</p>
+                <p><strong>Scores:</strong> Use quick buttons (+10, +5, +1, -1, -5, -10) or enter custom values. Undo last change if needed.</p>
+                <p><strong>Note:</strong> Slide navigation is handled by the Presenter. Focus on managing game flow!</p>
             </div>
         </div>
 
@@ -157,6 +158,27 @@
         grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
         gap: 20px;
         margin-top: 20px;
+    }
+
+    .help-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+        margin-bottom: 20px;
+    }
+
+    .help-card h2 {
+        color: white;
+        margin-bottom: 15px;
+    }
+
+    .help-content p {
+        margin: 10px 0;
+        line-height: 1.6;
+    }
+
+    .help-content strong {
+        color: #ffd700;
     }
 
     .score-control-card {

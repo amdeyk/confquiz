@@ -10,6 +10,28 @@
     </div>
 
     <div class="dashboard-content">
+        <!-- Help Instructions -->
+        <div class="help-banner">
+            <h3>📖 Admin Guide</h3>
+            <div class="help-grid">
+                <div class="help-item">
+                    <strong>👥 Teams:</strong> Create and manage participating teams
+                </div>
+                <div class="help-item">
+                    <strong>📅 Sessions:</strong> Create quiz sessions and assign teams
+                </div>
+                <div class="help-item">
+                    <strong>📊 Slides:</strong> Upload PowerPoint presentations (converted to PNG slides)
+                </div>
+                <div class="help-item">
+                    <strong>🎯 Quiz Master:</strong> Create QM accounts for game control
+                </div>
+                <div class="help-item">
+                    <strong>📡 Display & Monitor:</strong> Switch between PNG slides and screen sharing modes
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Actions -->
         <div class="card">
             <h2>Quick Actions</h2>
@@ -297,6 +319,41 @@
 
     .dashboard-content {
         min-height: 500px;
+    }
+
+    .help-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 10px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    }
+
+    .help-banner h3 {
+        margin: 0 0 20px 0;
+        color: white;
+        text-align: center;
+        font-size: 1.5rem;
+    }
+
+    .help-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+    }
+
+    .help-item {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #ffd700;
+    }
+
+    .help-item strong {
+        color: #ffd700;
+        display: block;
+        margin-bottom: 5px;
     }
 
     .action-buttons {
