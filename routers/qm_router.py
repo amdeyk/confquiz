@@ -367,6 +367,14 @@ async def adjust_score(
 
     await db.commit()
 
+    # Broadcast score update to all clients
+    from routers.ws_router import broadcast_event
+    await broadcast_event(session_id, {
+        "event": "score.update",
+        "team_id": team_id,
+        "total": score.total
+    })
+
     return {
         "message": "Score updated",
         "team_id": team_id,
@@ -418,6 +426,14 @@ async def undo_score(
     # Delete score event
     await db.delete(last_event)
     await db.commit()
+
+    # Broadcast score update to all clients
+    from routers.ws_router import broadcast_event
+    await broadcast_event(session_id, {
+        "event": "score.update",
+        "team_id": team_id,
+        "total": score.total if score else 0
+    })
 
     return {
         "message": "Score event undone",

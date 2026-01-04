@@ -240,6 +240,17 @@ function connectWebSocket() {
         document.getElementById('teamScore').textContent = data.total;
     });
 
+    ws.on('score.status', (data) => {
+        // Heartbeat update with all team scores
+        if (data.scores && teamId) {
+            // Find this team's score
+            const teamScore = data.scores.find(s => s.team_id === teamId);
+            if (teamScore) {
+                document.getElementById('teamScore').textContent = teamScore.total;
+            }
+        }
+    });
+
     ws.on('buzzer.status', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
         const buzzerButton = document.getElementById('buzzerButton');

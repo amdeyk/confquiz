@@ -17,6 +17,8 @@ class ConnectionManager:
         self.timer_tasks: Dict[int, asyncio.Task] = {}
         # Track buzzer heartbeat tasks
         self.buzzer_heartbeat_tasks: Dict[int, asyncio.Task] = {}
+        # Track score heartbeat tasks
+        self.score_heartbeat_tasks: Dict[int, asyncio.Task] = {}
 
     async def connect(self, websocket: WebSocket, session_id: int, role: str):
         await websocket.accept()
@@ -36,6 +38,12 @@ class ConnectionManager:
         if session_id not in self.buzzer_heartbeat_tasks:
             self.buzzer_heartbeat_tasks[session_id] = asyncio.create_task(
                 self._broadcast_buzzer_heartbeat(session_id)
+            )
+
+        # Start score heartbeat for this session if not already running
+        if session_id not in self.score_heartbeat_tasks:
+            self.score_heartbeat_tasks[session_id] = asyncio.create_task(
+                self._broadcast_score_heartbeat(session_id)
             )
 
     def disconnect(self, websocket: WebSocket, session_id: int, role: str):
@@ -58,6 +66,11 @@ class ConnectionManager:
                     if session_id in self.buzzer_heartbeat_tasks:
                         self.buzzer_heartbeat_tasks[session_id].cancel()
                         del self.buzzer_heartbeat_tasks[session_id]
+
+                    # Stop score heartbeat
+                    if session_id in self.score_heartbeat_tasks:
+                        self.score_heartbeat_tasks[session_id].cancel()
+                        del self.score_heartbeat_tasks[session_id]
 
                     del self.active_connections[session_id]
 
@@ -213,6 +226,63 @@ class ConnectionManager:
                     await r.close()
                 except:
                     pass
+
+    async def _broadcast_score_heartbeat(self, session_id: int):
+        """Background task to periodically broadcast score state to all clients"""
+        try:
+            while True:
+                try:
+                    # Get database session to fetch scores
+                    from database import get_async_session_maker
+                    from models import Team, TeamSession, Score
+                    from sqlalchemy import select
+
+                    async_session = get_async_session_maker()
+                    async with async_session() as db:
+                        # Fetch all teams in this session with their scores
+                        result = await db.execute(
+                            select(
+                                Team.id,
+                                Team.name,
+                                Score.total
+                            )
+                            .join(TeamSession, TeamSession.team_id == Team.id)
+                            .outerjoin(Score, Score.team_session_id == TeamSession.id)
+                            .where(TeamSession.session_id == session_id)
+                            .order_by(Score.total.desc().nulls_last(), Team.name)
+                        )
+
+                        teams = result.all()
+
+                        # Build scores list
+                        scores = []
+                        for index, (team_id, team_name, total) in enumerate(teams):
+                            scores.append({
+                                "team_id": team_id,
+                                "team_name": team_name,
+                                "total": total or 0,
+                                "rank": index + 1
+                            })
+
+                        # Broadcast score state to all clients
+                        score_state = {
+                            "event": "score.status",
+                            "scores": scores,
+                            "total_teams": len(scores)
+                        }
+
+                        await self.broadcast_to_session(session_id, score_state)
+
+                except Exception as e:
+                    # Log error but continue heartbeat
+                    print(f"Error in score heartbeat for session {session_id}: {e}")
+
+                # Wait 3 seconds before next heartbeat (larger payload than buzzer)
+                await asyncio.sleep(3)
+
+        except asyncio.CancelledError:
+            # Task was cancelled, cleanup
+            pass
 
 
 manager = ConnectionManager()

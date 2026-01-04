@@ -627,6 +627,11 @@ function connectWebSocket() {
                         .then(snapshot => updateScoreboard(snapshot.scores));
                     break;
 
+                case 'score.status':
+                    // Heartbeat update with all team scores
+                    updateScoreboard(data.scores || []);
+                    break;
+
                 case 'buzzer.update':
                 case 'buzzer.results':
                     apiRequest(`/display/sessions/${sessionId}/snapshot`)

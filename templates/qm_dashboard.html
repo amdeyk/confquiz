@@ -340,6 +340,21 @@ function connectWebSocket() {
         displayBuzzerQueue(data.queue);
     });
 
+    ws.on('score.status', (data) => {
+        debug('QM Dashboard: Score heartbeat update:', data.scores);
+        // Update score displays from heartbeat
+        if (data.scores) {
+            data.scores.forEach(score => {
+                const scoreElement = document.getElementById(`score-value-${score.team_id}`);
+                if (scoreElement) {
+                    scoreElement.textContent = score.total;
+                    // Update local cache
+                    currentScores[score.team_id] = score.total;
+                }
+            });
+        }
+    });
+
     ws.connect();
     debug('QM Dashboard: WebSocket connection initiated');
 }
