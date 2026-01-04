@@ -186,7 +186,21 @@ async def websocket_display(websocket: WebSocket, session_id: int):
 @router.websocket("/team/{session_id}")
 async def websocket_team(websocket: WebSocket, session_id: int, token: str = Query(...)):
     """WebSocket for team clients with buzzer support"""
-    # TODO: Validate token and extract team_id
+    # Validate token and extract team_id
+    from jose import jwt, JWTError
+    from config import settings as app_settings
+
+    try:
+        payload = jwt.decode(token, app_settings.secret_key, algorithms=[app_settings.algorithm])
+        team_id = payload.get("team_id")
+
+        if team_id is None:
+            await websocket.close(code=1008, reason="Invalid token: missing team_id")
+            return
+    except JWTError as e:
+        await websocket.close(code=1008, reason=f"Invalid token: {str(e)}")
+        return
+
     await manager.connect(websocket, session_id, "team")
 
     try:
@@ -195,7 +209,7 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
 
             # Handle buzz event
             if message.get("action") == "buzz":
-                team_id = message.get("team_id")
+                # Use team_id from JWT token (already validated above)
                 device_id = message.get("device_id", "default")
 
                 # Connect to Redis
@@ -216,9 +230,18 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
 
                     # Check if team already buzzed
                     buzzer_queue_key = f"buzzer:{session_id}"
-                    existing_buzzers = await r.lrange(buzzer_queue_key, 0, -1)
 
-                    if str(team_id) in existing_buzzers:
+                    # Get current timestamp for scoring
+                    import time
+                    timestamp_score = time.time()
+
+                    # Create member key (team_id:device_id)
+                    member_key = f"{team_id}:{device_id}"
+
+                    # Check if team already buzzed using sorted set
+                    existing_buzz = await r.zscore(buzzer_queue_key, member_key)
+
+                    if existing_buzz is not None:
                         # Team already in queue
                         await websocket.send_json({
                             "event": "buzz.rejected",
@@ -226,13 +249,13 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
                         })
                         continue
 
-                    # Add to buzzer queue
-                    await r.rpush(buzzer_queue_key, str(team_id))
+                    # Add to buzzer queue using sorted set (timestamp as score for ordering)
+                    await r.zadd(buzzer_queue_key, {member_key: timestamp_score})
 
                     # Set as first buzzer if queue was empty
                     first_buzzer_key = f"buzzer:first:{session_id}"
-                    first_buzzer = await r.get(first_buzzer_key)
-                    if not first_buzzer:
+                    queue_size = await r.zcard(buzzer_queue_key)
+                    if queue_size == 1:
                         await r.set(first_buzzer_key, str(team_id))
 
                     timestamp = datetime.utcnow().isoformat()
