@@ -309,6 +309,12 @@ async def toggle_buzzer_lock(
         await r.delete(f"buzzer:{session_id}")
         await r.delete(f"buzzer:first:{session_id}")
 
+        # Broadcast buzzer cleared event to all clients
+        from routers.ws_router import broadcast_event
+        await broadcast_event(session_id, {
+            "event": "buzzer.cleared"
+        })
+
     return {"message": f"Buzzers {'locked' if locked else 'unlocked'}"}
 
 

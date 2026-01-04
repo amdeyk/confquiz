@@ -388,6 +388,37 @@ async function setupWebRTC(offer, presenterId) {
             console.log('[WebRTC] Video display style:', window.getComputedStyle(video).display);
 
             console.log('[WebRTC] Video element updated successfully!');
+
+            // Send acknowledgment that video is playing
+            sendDisplayStatus('video-playing');
+
+            // Monitor video playback and send periodic health checks
+            video.onplaying = () => {
+                console.log('[WebRTC] Video started playing');
+                sendDisplayStatus('video-active');
+            };
+
+            video.onerror = (error) => {
+                console.error('[WebRTC] Video error:', error);
+                sendDisplayStatus('video-error');
+            };
+
+            // Send periodic health status every 5 seconds
+            if (window.displayHealthInterval) {
+                clearInterval(window.displayHealthInterval);
+            }
+            window.displayHealthInterval = setInterval(() => {
+                if (video.srcObject && !video.paused) {
+                    const track = event.streams[0].getVideoTracks()[0];
+                    if (track) {
+                        const settings = track.getSettings();
+                        sendDisplayStatus('video-healthy', {
+                            resolution: `${settings.width}x${settings.height}`,
+                            frameRate: settings.frameRate
+                        });
+                    }
+                }
+            }, 5000);
         };
 
         // Handle ICE candidates
@@ -431,7 +462,29 @@ async function setupWebRTC(offer, presenterId) {
     }
 }
 
+function sendDisplayStatus(status, data = {}) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        try {
+            ws.send(JSON.stringify({
+                type: 'display-status',
+                status: status,
+                display_id: displayId,
+                ...data
+            }));
+            console.log('[WebRTC] Sent display status:', status);
+        } catch (error) {
+            console.error('[WebRTC] Failed to send display status:', error);
+        }
+    }
+}
+
 function stopWebRTC() {
+    // Clear health check interval
+    if (window.displayHealthInterval) {
+        clearInterval(window.displayHealthInterval);
+        window.displayHealthInterval = null;
+    }
+
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
@@ -443,6 +496,9 @@ function stopWebRTC() {
 
     // Switch back to PNG slides
     document.getElementById('slideContainer').classList.remove('hidden');
+
+    // Notify presenter that video stopped
+    sendDisplayStatus('video-stopped');
 }
 
 async function init() {
@@ -537,6 +593,15 @@ function connectWebSocket() {
 
     ws.onopen = () => {
         console.log('WebSocket connected');
+
+        // Notify presenter that display is ready (in case screen sharing is already active)
+        if (displayMode === 'screen_share') {
+            ws.send(JSON.stringify({
+                type: 'display-ready',
+                display_id: displayId
+            }));
+            console.log('[WebRTC] Sent display-ready message');
+        }
     };
 
     ws.onmessage = (event) => {
@@ -566,6 +631,11 @@ function connectWebSocket() {
                 case 'buzzer.results':
                     apiRequest(`/display/sessions/${sessionId}/snapshot`)
                         .then(snapshot => updateBuzzerQueue(snapshot.buzzer_queue));
+                    break;
+
+                case 'buzzer.cleared':
+                    // Clear buzzer queue display
+                    updateBuzzerQueue([]);
                     break;
 
                 case 'webrtc.offer':

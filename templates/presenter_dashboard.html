@@ -50,6 +50,10 @@
                 <div>Frame Rate: <span id="currentFps">0</span> FPS</div>
                 <div>Connected Displays: <span id="displayCount">0</span></div>
             </div>
+            <div class="display-health">
+                <h4>📺 Display Status</h4>
+                <div id="displayHealthList"></div>
+            </div>
         </div>
     </div>
 
@@ -182,6 +186,42 @@
         color: #2c3e50;
     }
 
+    .display-health {
+        margin-top: 15px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .display-health h4 {
+        margin: 0 0 10px 0;
+        color: #2c3e50;
+    }
+
+    .display-item {
+        padding: 10px;
+        margin: 5px 0;
+        background: white;
+        border-radius: 5px;
+        border-left: 4px solid #95a5a6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .display-item.active {
+        border-left-color: #27ae60;
+    }
+
+    .display-item.error {
+        border-left-color: #e74c3c;
+    }
+
+    .display-status {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+    }
+
     .alert {
         padding: 15px;
         border-radius: 8px;
@@ -202,6 +242,7 @@ let screenStream = null;
 let sessionId = null;
 let frameRate = 10;
 const presenterId = 'presenter_' + Math.random().toString(36).substr(2, 9);
+const connectedDisplays = new Map(); // Track display health status
 
 // Check browser compatibility
 window.addEventListener('load', () => {
@@ -284,6 +325,61 @@ async function connectWebSocket() {
     websocket.onmessage = async (event) => {
         const message = JSON.parse(event.data);
         console.log('WebSocket message:', message);
+
+        // Handle display ready (reconnection while presenting)
+        if (message.event === 'display.ready') {
+            console.log('[WebRTC] Display reconnected, re-sending offer');
+
+            // Track new display
+            const displayId = message.display_id;
+            connectedDisplays.set(displayId, {
+                id: displayId,
+                status: 'connecting',
+                lastUpdate: Date.now()
+            });
+            updateDisplayHealth();
+
+            if (screenStream && peerConnection) {
+                try {
+                    // Re-create and send offer for the new display
+                    const offer = await peerConnection.createOffer({
+                        offerToReceiveAudio: false,
+                        offerToReceiveVideo: false
+                    });
+
+                    offer.sdp = preferCodec(offer.sdp, 'video', 'VP9');
+                    await peerConnection.setLocalDescription(offer);
+
+                    if (websocket && websocket.readyState === WebSocket.OPEN) {
+                        websocket.send(JSON.stringify({
+                            type: 'offer',
+                            sdp: offer.sdp,
+                            presenter_id: presenterId
+                        }));
+                        console.log('[WebRTC] Offer re-sent to reconnected display');
+                    }
+                } catch (error) {
+                    console.error('[WebRTC] Failed to re-send offer:', error);
+                }
+            }
+        }
+
+        // Handle display status updates (health checks)
+        if (message.event === 'display.status') {
+            const displayId = message.display_id;
+            const status = message.status;
+
+            connectedDisplays.set(displayId, {
+                id: displayId,
+                status: status,
+                resolution: message.resolution,
+                frameRate: message.frameRate,
+                lastUpdate: Date.now()
+            });
+
+            updateDisplayHealth();
+            console.log('[WebRTC] Display status update:', displayId, status);
+        }
 
         // Handle WebRTC answer from display
         if (message.event === 'webrtc.answer') {
@@ -540,6 +636,75 @@ setInterval(() => {
         sendStatusUpdate();
     }
 }, 3000); // Every 3 seconds
+
+// Update display health status UI
+function updateDisplayHealth() {
+    const healthList = document.getElementById('displayHealthList');
+    const displayCount = document.getElementById('displayCount');
+
+    if (!healthList) return;
+
+    // Update count
+    displayCount.textContent = connectedDisplays.size;
+
+    // Clear old stale displays (no update in 15 seconds)
+    const now = Date.now();
+    for (const [id, display] of connectedDisplays.entries()) {
+        if (now - display.lastUpdate > 15000) {
+            connectedDisplays.delete(id);
+        }
+    }
+
+    // Update display list
+    if (connectedDisplays.size === 0) {
+        healthList.innerHTML = '<div class="display-status">No displays connected</div>';
+        return;
+    }
+
+    healthList.innerHTML = '';
+    for (const [id, display] of connectedDisplays.entries()) {
+        const item = document.createElement('div');
+        item.className = 'display-item';
+
+        if (display.status === 'video-healthy' || display.status === 'video-active') {
+            item.classList.add('active');
+        } else if (display.status === 'video-error') {
+            item.classList.add('error');
+        }
+
+        const statusText = {
+            'connecting': 'Connecting...',
+            'video-playing': 'Video Starting',
+            'video-active': 'Active',
+            'video-healthy': 'Healthy',
+            'video-error': 'Error',
+            'video-stopped': 'Stopped'
+        }[display.status] || display.status;
+
+        const details = display.resolution
+            ? `${display.resolution} @ ${Math.round(display.frameRate || 0)} FPS`
+            : '';
+
+        item.innerHTML = `
+            <div>
+                <strong>${id.substring(0, 12)}...</strong>
+                <div class="display-status">${statusText}${details ? ' - ' + details : ''}</div>
+            </div>
+            <div style="color: ${item.classList.contains('active') ? '#27ae60' : item.classList.contains('error') ? '#e74c3c' : '#95a5a6'}">
+                ${item.classList.contains('active') ? '●' : item.classList.contains('error') ? '✕' : '○'}
+            </div>
+        `;
+
+        healthList.appendChild(item);
+    }
+}
+
+// Clean up stale displays every 5 seconds
+setInterval(() => {
+    if (connectedDisplays.size > 0) {
+        updateDisplayHealth();
+    }
+}, 5000);
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', () => {

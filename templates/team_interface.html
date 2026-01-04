@@ -266,9 +266,35 @@ function connectWebSocket() {
 
     ws.on('buzz.confirmed', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
-        statusDiv.textContent = '✓ Buzz Registered!';
+        const placementDiv = document.getElementById('placementDisplay');
+
+        // Show confirmation with placement
+        statusDiv.textContent = data.message || '✓ Buzz Registered!';
         statusDiv.style.color = '#2ecc71';
         document.getElementById('buzzerButton').disabled = true;
+
+        // Show placement
+        if (data.placement) {
+            const suffix = data.placement === 1 ? 'st' : data.placement === 2 ? 'nd' : data.placement === 3 ? 'rd' : 'th';
+            placementDiv.textContent = `You are ${data.placement}${suffix} (${data.total_buzzers} total)`;
+            placementDiv.className = 'placement-display';
+            if (data.placement === 1) {
+                placementDiv.classList.add('placement-1st');
+            }
+        }
+    });
+
+    ws.on('buzzer.cleared', (data) => {
+        // Re-enable buzzer when queue is cleared
+        const statusDiv = document.getElementById('buzzerStatus');
+        const buzzerButton = document.getElementById('buzzerButton');
+        const placementDiv = document.getElementById('placementDisplay');
+
+        statusDiv.textContent = 'Ready';
+        statusDiv.style.color = '#27ae60';
+        buzzerButton.disabled = false;
+        placementDiv.textContent = '';
+        placementDiv.className = 'placement-display';
     });
 
     ws.connect();

@@ -154,8 +154,35 @@ async def websocket_display(websocket: WebSocket, session_id: int):
         while True:
             message = await websocket.receive_json()
 
+            # Handle display ready (for reconnection to active screen sharing)
+            if message.get("type") == "display-ready":
+                # Forward to presenter to trigger new offer
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "display.ready",
+                        "display_id": message.get("display_id")
+                    },
+                    role="presenter"
+                )
+
+            # Handle display status updates (health checks)
+            elif message.get("type") == "display-status":
+                # Forward display health status to presenter
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "display.status",
+                        "display_id": message.get("display_id"),
+                        "status": message.get("status"),
+                        "resolution": message.get("resolution"),
+                        "frameRate": message.get("frameRate")
+                    },
+                    role="presenter"
+                )
+
             # Handle WebRTC answer from display
-            if message.get("type") == "answer":
+            elif message.get("type") == "answer":
                 # Forward answer back to presenter
                 await manager.broadcast_to_session(
                     session_id,
@@ -252,6 +279,10 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
                     # Add to buzzer queue using sorted set (timestamp as score for ordering)
                     await r.zadd(buzzer_queue_key, {member_key: timestamp_score})
 
+                    # Get placement (rank in the queue)
+                    placement = await r.zrank(buzzer_queue_key, member_key)
+                    placement = placement + 1 if placement is not None else 1
+
                     # Set as first buzzer if queue was empty
                     first_buzzer_key = f"buzzer:first:{session_id}"
                     queue_size = await r.zcard(buzzer_queue_key)
@@ -264,17 +295,22 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
                     buzz_event = {
                         "event": "buzzer.update",
                         "team_id": team_id,
-                        "timestamp": timestamp
+                        "timestamp": timestamp,
+                        "placement": placement,
+                        "total_buzzers": queue_size
                     }
 
                     await manager.broadcast_to_session(session_id, buzz_event, role="qm")
                     await manager.broadcast_to_session(session_id, buzz_event, role="display")
                     await manager.broadcast_to_session(session_id, buzz_event, role="team")
 
-                    # Send confirmation to buzzing team
+                    # Send explicit confirmation to buzzing team with placement
                     await websocket.send_json({
                         "event": "buzz.confirmed",
-                        "timestamp": timestamp
+                        "timestamp": timestamp,
+                        "placement": placement,
+                        "total_buzzers": queue_size,
+                        "message": f"You are #{placement} in the queue!"
                     })
 
                 finally:
