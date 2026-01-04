@@ -13,6 +13,8 @@ class ConnectionManager:
     def __init__(self):
         # {session_id: {role: [websocket, websocket, ...]}}
         self.active_connections: Dict[int, Dict[str, Set[WebSocket]]] = {}
+        # Track which team_id each websocket belongs to: {websocket: team_id}
+        self.team_websocket_map: Dict[WebSocket, int] = {}
         # Track background timer subscription tasks
         self.timer_tasks: Dict[int, asyncio.Task] = {}
         # Track buzzer heartbeat tasks
@@ -46,10 +48,28 @@ class ConnectionManager:
                 self._broadcast_score_heartbeat(session_id)
             )
 
+    def register_team_connection(self, websocket: WebSocket, team_id: int):
+        """Register which team_id a websocket belongs to"""
+        self.team_websocket_map[websocket] = team_id
+
+    def get_online_team_ids(self, session_id: int) -> Set[int]:
+        """Get set of team_ids that are currently online for a session"""
+        online_teams = set()
+        if session_id in self.active_connections:
+            if "team" in self.active_connections[session_id]:
+                for ws in self.active_connections[session_id]["team"]:
+                    if ws in self.team_websocket_map:
+                        online_teams.add(self.team_websocket_map[ws])
+        return online_teams
+
     def disconnect(self, websocket: WebSocket, session_id: int, role: str):
         if session_id in self.active_connections:
             if role in self.active_connections[session_id]:
                 self.active_connections[session_id][role].discard(websocket)
+
+                # Clean up team mapping if this was a team connection
+                if websocket in self.team_websocket_map:
+                    del self.team_websocket_map[websocket]
 
                 # If no more connections for this session, stop background tasks
                 has_connections = any(
@@ -232,6 +252,9 @@ class ConnectionManager:
         try:
             while True:
                 try:
+                    # Get online team IDs for this session
+                    online_team_ids = self.get_online_team_ids(session_id)
+
                     # Get database session to fetch scores
                     from database import get_async_session_maker
                     from models import Team, TeamSession, Score
@@ -239,7 +262,7 @@ class ConnectionManager:
 
                     async_session = get_async_session_maker()
                     async with async_session() as db:
-                        # Fetch all teams in this session with their scores
+                        # Fetch only online teams' scores
                         result = await db.execute(
                             select(
                                 Team.id,
@@ -248,7 +271,10 @@ class ConnectionManager:
                             )
                             .join(TeamSession, TeamSession.team_id == Team.id)
                             .outerjoin(Score, Score.team_session_id == TeamSession.id)
-                            .where(TeamSession.session_id == session_id)
+                            .where(
+                                TeamSession.session_id == session_id,
+                                Team.id.in_(online_team_ids) if online_team_ids else False
+                            )
                             .order_by(Score.total.desc().nulls_last(), Team.name)
                         )
 
@@ -268,7 +294,8 @@ class ConnectionManager:
                         score_state = {
                             "event": "score.status",
                             "scores": scores,
-                            "total_teams": len(scores)
+                            "total_teams": len(scores),
+                            "online_teams": len(online_team_ids)
                         }
 
                         await self.broadcast_to_session(session_id, score_state)
@@ -399,6 +426,9 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
         return
 
     await manager.connect(websocket, session_id, "team")
+
+    # Register this team's connection for online tracking
+    manager.register_team_connection(websocket, team_id)
 
     try:
         while True:
