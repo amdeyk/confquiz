@@ -129,20 +129,36 @@ class ConnectionManager:
 
             # Listen for timer tick messages
             while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
-                if message and message['type'] == 'message':
-                    try:
-                        remaining_ms = int(message['data'])
-                        # Broadcast timer tick to all connected clients
-                        await self.broadcast_to_session(
-                            session_id,
-                            {
-                                "event": "timer.tick",
-                                "remaining_ms": remaining_ms
-                            }
-                        )
-                    except (ValueError, KeyError):
-                        pass  # Ignore malformed messages
+                try:
+                    message = await asyncio.wait_for(
+                        pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
+                        timeout=2.0
+                    )
+                    if message and message['type'] == 'message':
+                        try:
+                            remaining_ms = int(message['data'])
+                            # Broadcast timer tick to all connected clients with timeout
+                            await asyncio.wait_for(
+                                self.broadcast_to_session(
+                                    session_id,
+                                    {
+                                        "event": "timer.tick",
+                                        "remaining_ms": remaining_ms,
+                                        "state": "counting"
+                                    }
+                                ),
+                                timeout=0.5
+                            )
+                        except (ValueError, KeyError):
+                            pass  # Ignore malformed messages
+                        except asyncio.TimeoutError:
+                            print(f"Broadcast timeout in timer tick for session {session_id}")
+                except asyncio.TimeoutError:
+                    # Timeout waiting for message - just continue
+                    pass
+                except Exception as e:
+                    print(f"Error in timer subscription for session {session_id}: {e}")
+
                 await asyncio.sleep(0.1)
 
         except asyncio.CancelledError:
@@ -170,17 +186,24 @@ class ConnectionManager:
 
             while True:
                 try:
-                    # Read buzzer lock status
+                    # Read buzzer state with timeout to prevent blocking
                     buzzer_lock_key = f"buzzer:lock:{session_id}"
-                    is_locked = await r.get(buzzer_lock_key)
-
-                    # Read buzzer queue (sorted set with team_id:device_id as members)
                     buzzer_queue_key = f"buzzer:{session_id}"
-                    queue_members = await r.zrange(buzzer_queue_key, 0, -1, withscores=True)
-
-                    # Read first buzzer
                     first_buzzer_key = f"buzzer:first:{session_id}"
-                    first_buzzer_team_id = await r.get(first_buzzer_key)
+
+                    # Wrap Redis operations in timeout (1 second max)
+                    try:
+                        is_locked, queue_members, first_buzzer_team_id = await asyncio.wait_for(
+                            asyncio.gather(
+                                r.get(buzzer_lock_key),
+                                r.zrange(buzzer_queue_key, 0, -1, withscores=True),
+                                r.get(first_buzzer_key)
+                            ),
+                            timeout=1.0
+                        )
+                    except asyncio.TimeoutError:
+                        print(f"Redis timeout in buzzer heartbeat for session {session_id}")
+                        continue  # Skip this heartbeat cycle
 
                     # Build buzzer queue data with team names
                     buzzer_queue = []
@@ -190,33 +213,46 @@ class ConnectionManager:
                         from models import Team, TeamSession
                         from sqlalchemy import select
 
-                        async_session = get_async_session_maker()
-                        async with async_session() as db:
-                            for index, (member, score) in enumerate(queue_members):
-                                # member format: "team_id:device_id"
-                                parts = member.split(':', 1)
-                                team_id = int(parts[0]) if len(parts) > 0 else None
-                                device_id = parts[1] if len(parts) > 1 else "default"
+                        # Extract all team_ids FIRST (avoid N+1 query)
+                        team_ids = []
+                        member_data = []
+                        for index, (member, score) in enumerate(queue_members):
+                            parts = member.split(':', 1)
+                            team_id = int(parts[0]) if len(parts) > 0 else None
+                            device_id = parts[1] if len(parts) > 1 else "default"
+                            if team_id:
+                                team_ids.append(team_id)
+                                member_data.append((team_id, device_id, score, index + 1))
 
-                                if team_id:
-                                    # Fetch team name
-                                    result = await db.execute(
-                                        select(Team.name)
+                        # Fetch ALL team names in ONE query with timeout
+                        async_session = get_async_session_maker()
+                        try:
+                            async with async_session() as db:
+                                result = await asyncio.wait_for(
+                                    db.execute(
+                                        select(Team.id, Team.name)
                                         .join(TeamSession, TeamSession.team_id == Team.id)
                                         .where(
                                             TeamSession.session_id == session_id,
-                                            Team.id == team_id
+                                            Team.id.in_(team_ids)
                                         )
-                                    )
-                                    team_name = result.scalar_one_or_none()
+                                    ),
+                                    timeout=1.0
+                                )
+                                team_names = {team_id: name for team_id, name in result.all()}
+                        except asyncio.TimeoutError:
+                            print(f"Database timeout in buzzer heartbeat for session {session_id}")
+                            team_names = {}  # Fallback to empty names
 
-                                    buzzer_queue.append({
-                                        "team_id": team_id,
-                                        "team_name": team_name or f"Team {team_id}",
-                                        "device_id": device_id,
-                                        "timestamp": score,
-                                        "placement": index + 1
-                                    })
+                        # Build queue with fetched names
+                        for team_id, device_id, score, placement in member_data:
+                            buzzer_queue.append({
+                                "team_id": team_id,
+                                "team_name": team_names.get(team_id, f"Team {team_id}"),
+                                "device_id": device_id,
+                                "timestamp": score,
+                                "placement": placement
+                            })
 
                     # Broadcast buzzer state to all clients
                     buzzer_state = {
@@ -232,9 +268,11 @@ class ConnectionManager:
                 except Exception as e:
                     # Log error but continue heartbeat
                     print(f"Error in buzzer heartbeat for session {session_id}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
-                # Wait 2 seconds before next heartbeat
-                await asyncio.sleep(2)
+                # Wait 5 seconds before next heartbeat (reduced frequency to prevent blocking)
+                await asyncio.sleep(5)
 
         except asyncio.CancelledError:
             # Task was cancelled, cleanup
@@ -261,51 +299,60 @@ class ConnectionManager:
                     from sqlalchemy import select
 
                     async_session = get_async_session_maker()
-                    async with async_session() as db:
-                        # Fetch only online teams' scores
-                        result = await db.execute(
-                            select(
-                                Team.id,
-                                Team.name,
-                                Score.total
+                    try:
+                        async with async_session() as db:
+                            # Fetch only online teams' scores with timeout
+                            result = await asyncio.wait_for(
+                                db.execute(
+                                    select(
+                                        Team.id,
+                                        Team.name,
+                                        Score.total
+                                    )
+                                    .join(TeamSession, TeamSession.team_id == Team.id)
+                                    .outerjoin(Score, Score.team_session_id == TeamSession.id)
+                                    .where(
+                                        TeamSession.session_id == session_id,
+                                        Team.id.in_(online_team_ids) if online_team_ids else False
+                                    )
+                                    .order_by(Score.total.desc().nulls_last(), Team.name)
+                                ),
+                                timeout=1.0
                             )
-                            .join(TeamSession, TeamSession.team_id == Team.id)
-                            .outerjoin(Score, Score.team_session_id == TeamSession.id)
-                            .where(
-                                TeamSession.session_id == session_id,
-                                Team.id.in_(online_team_ids) if online_team_ids else False
-                            )
-                            .order_by(Score.total.desc().nulls_last(), Team.name)
-                        )
 
-                        teams = result.all()
+                            teams = result.all()
+                    except asyncio.TimeoutError:
+                        print(f"Database timeout in score heartbeat for session {session_id}")
+                        teams = []  # Fallback to empty scores
 
-                        # Build scores list
-                        scores = []
-                        for index, (team_id, team_name, total) in enumerate(teams):
-                            scores.append({
-                                "team_id": team_id,
-                                "team_name": team_name,
-                                "total": total or 0,
-                                "rank": index + 1
-                            })
+                    # Build scores list
+                    scores = []
+                    for index, (team_id, team_name, total) in enumerate(teams):
+                        scores.append({
+                            "team_id": team_id,
+                            "team_name": team_name,
+                            "total": total or 0,
+                            "rank": index + 1
+                        })
 
-                        # Broadcast score state to all clients
-                        score_state = {
-                            "event": "score.status",
-                            "scores": scores,
-                            "total_teams": len(scores),
-                            "online_teams": len(online_team_ids)
-                        }
+                    # Broadcast score state to all clients
+                    score_state = {
+                        "event": "score.status",
+                        "scores": scores,
+                        "total_teams": len(scores),
+                        "online_teams": len(online_team_ids)
+                    }
 
-                        await self.broadcast_to_session(session_id, score_state)
+                    await self.broadcast_to_session(session_id, score_state)
 
                 except Exception as e:
                     # Log error but continue heartbeat
                     print(f"Error in score heartbeat for session {session_id}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
-                # Wait 3 seconds before next heartbeat (larger payload than buzzer)
-                await asyncio.sleep(3)
+                # Wait 5 seconds before next heartbeat (reduced frequency to prevent blocking)
+                await asyncio.sleep(5)
 
         except asyncio.CancelledError:
             # Task was cancelled, cleanup
