@@ -5,6 +5,8 @@ import asyncio
 from datetime import datetime
 import redis.asyncio as redis
 from config import settings
+from services.display_registry import get_display, set_display_status, upsert_display
+from services.livekit_tokens import create_livekit_token
 
 router = APIRouter()
 
@@ -15,6 +17,9 @@ class ConnectionManager:
         self.active_connections: Dict[int, Dict[str, Set[WebSocket]]] = {}
         # Track which team_id each websocket belongs to: {websocket: team_id}
         self.team_websocket_map: Dict[WebSocket, int] = {}
+        # Track display websocket mapping
+        self.display_websocket_map: Dict[str, WebSocket] = {}
+        self.display_id_map: Dict[WebSocket, str] = {}
         # Track background timer subscription tasks
         self.timer_tasks: Dict[int, asyncio.Task] = {}
         # Track buzzer heartbeat tasks
@@ -52,6 +57,21 @@ class ConnectionManager:
         """Register which team_id a websocket belongs to"""
         self.team_websocket_map[websocket] = team_id
 
+    def register_display_connection(self, websocket: WebSocket, display_id: str):
+        """Register which display_id a websocket belongs to"""
+        self.display_websocket_map[display_id] = websocket
+        self.display_id_map[websocket] = display_id
+
+    async def send_to_display(self, display_id: str, message: dict):
+        """Send a message to a specific display if connected"""
+        websocket = self.display_websocket_map.get(display_id)
+        if not websocket:
+            return
+        try:
+            await websocket.send_json(message)
+        except:
+            pass
+
     def get_online_team_ids(self, session_id: int) -> Set[int]:
         """Get set of team_ids that are currently online for a session"""
         online_teams = set()
@@ -70,6 +90,11 @@ class ConnectionManager:
                 # Clean up team mapping if this was a team connection
                 if websocket in self.team_websocket_map:
                     del self.team_websocket_map[websocket]
+
+                # Clean up display mapping if this was a display connection
+                if websocket in self.display_id_map:
+                    display_id = self.display_id_map.pop(websocket)
+                    self.display_websocket_map.pop(display_id, None)
 
                 # If no more connections for this session, stop background tasks
                 has_connections = any(
@@ -398,31 +423,110 @@ async def websocket_display(websocket: WebSocket, session_id: int):
         while True:
             message = await websocket.receive_json()
 
-            # Handle display ready (for reconnection to active screen sharing)
-            if message.get("type") == "display-ready":
-                # Forward to presenter to trigger new offer
-                await manager.broadcast_to_session(
+            if message.get("type") == "display-join":
+                display_id = message.get("display_id")
+                user_agent = message.get("user_agent")
+                if not display_id:
+                    continue
+
+                manager.register_display_connection(websocket, display_id)
+
+                existing = await get_display(session_id, display_id)
+                role = existing.get("role") if existing else None
+                status = "approved" if role else "pending"
+
+                await upsert_display(
                     session_id,
+                    display_id,
                     {
-                        "event": "display.ready",
-                        "display_id": message.get("display_id")
-                    },
-                    role="presenter"
+                        "status": status,
+                        "role": role,
+                        "user_agent": user_agent
+                    }
                 )
 
-            # Handle display status updates (health checks)
-            elif message.get("type") == "display-status":
-                # Forward display health status to presenter
+                if role:
+                    try:
+                        room_name = f"{settings.livekit_room_prefix}-{session_id}"
+                        token = create_livekit_token(
+                            identity=display_id,
+                            room=room_name,
+                            can_publish=False,
+                            can_subscribe=True,
+                            metadata={"role": role, "display_id": display_id, "session_id": session_id}
+                        )
+                        await manager.send_to_display(display_id, {
+                            "event": "display.approved",
+                            "display_id": display_id,
+                            "role": role,
+                            "token": token,
+                            "livekit_url": settings.livekit_url,
+                            "room_name": room_name
+                        })
+                    except ValueError as error:
+                        await manager.send_to_display(display_id, {
+                            "event": "display.error",
+                            "message": str(error)
+                        })
+                else:
+                    await manager.broadcast_to_session(
+                        session_id,
+                        {
+                            "event": "display.pending",
+                            "display_id": display_id
+                        },
+                        role="admin"
+                    )
+
+            # Handle display telemetry updates (health checks)
+            elif message.get("type") in ["display-telemetry", "display-status"]:
+                display_id = message.get("display_id")
+                if not display_id:
+                    continue
+
+                updates = {
+                    "status": "connected",
+                    "metrics": {
+                        "resolution": message.get("resolution"),
+                        "frameRate": message.get("frameRate"),
+                        "bitrate": message.get("bitrate"),
+                        "packetLoss": message.get("packetLoss"),
+                        "jitter": message.get("jitter")
+                    }
+                }
+                registry = await upsert_display(session_id, display_id, updates)
+
                 await manager.broadcast_to_session(
                     session_id,
                     {
                         "event": "display.status",
-                        "display_id": message.get("display_id"),
-                        "status": message.get("status"),
-                        "resolution": message.get("resolution"),
-                        "frameRate": message.get("frameRate")
+                        "display_id": display_id,
+                        "status": registry.get("status"),
+                        "role": registry.get("role"),
+                        "resolution": registry.get("metrics", {}).get("resolution"),
+                        "frameRate": registry.get("metrics", {}).get("frameRate"),
+                        "bitrate": registry.get("metrics", {}).get("bitrate"),
+                        "packetLoss": registry.get("metrics", {}).get("packetLoss"),
+                        "jitter": registry.get("metrics", {}).get("jitter"),
+                        "last_seen": registry.get("last_seen")
                     },
                     role="presenter"
+                )
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "display.status",
+                        "display_id": display_id,
+                        "status": registry.get("status"),
+                        "role": registry.get("role"),
+                        "resolution": registry.get("metrics", {}).get("resolution"),
+                        "frameRate": registry.get("metrics", {}).get("frameRate"),
+                        "bitrate": registry.get("metrics", {}).get("bitrate"),
+                        "packetLoss": registry.get("metrics", {}).get("packetLoss"),
+                        "jitter": registry.get("metrics", {}).get("jitter"),
+                        "last_seen": registry.get("last_seen")
+                    },
+                    role="admin"
                 )
 
             # Handle WebRTC answer from display
@@ -451,6 +555,19 @@ async def websocket_display(websocket: WebSocket, session_id: int):
                 )
 
     except WebSocketDisconnect:
+        if websocket in manager.display_id_map:
+            display_id = manager.display_id_map.get(websocket)
+            if display_id:
+                await set_display_status(session_id, display_id, "disconnected")
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "display.status",
+                        "display_id": display_id,
+                        "status": "disconnected"
+                    },
+                    role="admin"
+                )
         manager.disconnect(websocket, session_id, "display")
 
 
@@ -654,7 +771,14 @@ async def websocket_presenter(websocket: WebSocket, session_id: int, token: str 
                         "webrtc_state": message.get("webrtc_state"),
                         "ice_state": message.get("ice_state"),
                         "frame_rate": message.get("frame_rate"),
-                        "resolution": message.get("resolution")
+                        "resolution": message.get("resolution"),
+                        "bitrate": message.get("bitrate"),
+                        "codec": message.get("codec"),
+                        "bitrate_cap": message.get("bitrate_cap"),
+                        "fps_cap": message.get("fps_cap"),
+                        "fec": message.get("fec"),
+                        "rtx": message.get("rtx"),
+                        "bandwidth_locked": message.get("bandwidth_locked")
                     },
                     role="admin"
                 )

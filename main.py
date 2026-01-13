@@ -1,5 +1,6 @@
 import os
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,12 +15,14 @@ from auth import create_admin_user
 # Import routers
 from routers import auth_router, admin_router, qm_router, team_router, display_router
 from routers import ws_router, media_router
+from services.bandwidth_monitor import run_bandwidth_monitor
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting Quiz System...")
+    bandwidth_task = None
 
     # Create media directories
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -35,11 +38,18 @@ async def lifespan(app: FastAPI):
         await create_admin_user(db)
         break
 
+    if settings.bandwidth_monitor_enabled:
+        bandwidth_task = asyncio.create_task(run_bandwidth_monitor())
+
     print(f"Server starting on {settings.host}:{settings.port}")
 
     yield
 
     # Shutdown
+    if bandwidth_task:
+        bandwidth_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await bandwidth_task
     print("Shutting down Quiz System...")
 
 

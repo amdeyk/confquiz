@@ -4,6 +4,15 @@
 
 ---
 
+## 2026-01-13 LiveKit SFU Upgrade
+
+- LiveKit SFU replaces P2P screen sharing
+- Admin approval required for protected/normal displays
+- VPS setup: `LIVEKIT_VPS_SETUP.md`
+- Change log: `CHANGE_DOCUMENT_LIVEKIT_SFU.md`
+
+---
+
 ## 📋 Implementation Summary
 
 **ALL 7 PHASES COMPLETED** ✅

@@ -16,11 +16,13 @@ This system is designed to be deployed for **any conference or event** by simply
 - [ ] Generate secure `SECRET_KEY`
 - [ ] Configure all conference details
 - [ ] Verify `.env` is NOT in git
+- [ ] Optional: set `ENV_FILE` to override the default `.env` (use `.env2` for this update if `.env` is protected)
 
 ### 2. **Dependencies**
 
 - [ ] Python 3.10+ installed
 - [ ] Redis server available
+- [ ] LiveKit SFU installed and running (see `LIVEKIT_VPS_SETUP.md`)
 - [ ] LibreOffice (optional, for PPT conversion)
 - [ ] All Python packages installed
 
@@ -33,6 +35,12 @@ This system is designed to be deployed for **any conference or event** by simply
 ---
 
 ## Deployment Methods
+
+### LiveKit SFU (VPS)
+
+Screen sharing uses LiveKit as an SFU with systemd on the VPS. Follow the setup guide:
+
+- `LIVEKIT_VPS_SETUP.md`
 
 ### Method 1: Local Network (Recommended for Events)
 

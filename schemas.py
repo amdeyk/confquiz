@@ -199,6 +199,29 @@ class BuzzerQueueEvent(BaseModel):
     locked: bool
 
 
+# ============ LiveKit / SFU Schemas ============
+
+class PresenterLiveKitTokenRequest(BaseModel):
+    session_id: int
+
+
+class DisplayApprovalRequest(BaseModel):
+    session_id: int
+    role: str  # "protected" or "normal"
+
+
+class BandwidthStatusResponse(BaseModel):
+    date: str
+    total_bytes: int
+    total_gb: float
+    budget_gb: int
+    warn_gb: int
+    critical_gb: int
+    remaining_gb: float
+    status: str  # "ok", "warn", "critical"
+    last_sample_ts: Optional[int] = None
+
+
 # ============ Display Schemas ============
 
 class DisplaySnapshot(BaseModel):

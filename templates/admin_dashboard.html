@@ -55,24 +55,12 @@
                 </div>
 
                 <div id="screenShareSettings" style="display:block;">
-                    <div class="form-group">
-                        <label>Frame Rate</label>
-                        <select id="fpsSettingSelect">
-                            <option value="5">5 FPS (Low bandwidth)</option>
-                            <option value="10" selected>10 FPS (Recommended)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Quality</label>
-                        <select id="qualitySettingSelect">
-                            <option value="0.5">Low Quality</option>
-                            <option value="0.7" selected>Medium Quality</option>
-                            <option value="0.9">High Quality</option>
-                        </select>
+                    <div class="alert alert-info">
+                        LiveKit screen share is controlled by the presenter. This panel is read-only in v1.
                     </div>
                 </div>
 
-                <button class="btn btn-success" onclick="saveDisplaySettings()">Save Settings</button>
+                <button class="btn btn-success" onclick="saveDisplaySettings()">Save Display Mode</button>
 
                 <div class="alert alert-info" style="margin-top: 20px;">
                     <strong>Note:</strong> Screen share mode requires a presenter to share their screen.
@@ -80,10 +68,10 @@
                 </div>
             </div>
 
-            <!-- WebRTC Signal Monitor -->
+            <!-- LiveKit Screen Share Monitor -->
             <div class="card" style="margin-top: 20px;">
-                <h2>📡 WebRTC Signal Monitor</h2>
-                <p class="info-text">Real-time monitoring of screen sharing connections</p>
+                <h2>📡 LiveKit Screen Share Monitor</h2>
+                <p class="info-text">Operational view of presenter + displays (read-only)</p>
 
                 <div class="signal-monitor">
                     <div class="monitor-row">
@@ -96,14 +84,7 @@
                         </div>
 
                         <div class="monitor-item">
-                            <div class="monitor-label">Display Screens</div>
-                            <div id="displayCount" class="monitor-value">0 connected</div>
-                        </div>
-                    </div>
-
-                    <div class="monitor-row">
-                        <div class="monitor-item">
-                            <div class="monitor-label">WebRTC Connection</div>
+                            <div class="monitor-label">LiveKit Connection</div>
                             <div id="webrtcStatus" class="status-indicator status-disconnected">
                                 <span class="status-dot"></span>
                                 <span class="status-text">Not Connected</span>
@@ -111,20 +92,77 @@
                         </div>
 
                         <div class="monitor-item">
-                            <div class="monitor-label">Streaming Quality</div>
-                            <div id="streamQuality" class="monitor-value">
-                                <div>Frame Rate: <span id="monitorFps">--</span> FPS</div>
-                                <div>Resolution: <span id="monitorResolution">--</span></div>
-                            </div>
+                            <div class="monitor-label">Presenter Bitrate</div>
+                            <div id="presenterBitrate" class="monitor-value">--</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Active Displays</div>
+                            <div id="displayCount" class="monitor-value">0</div>
                         </div>
                     </div>
 
                     <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Bitrate Cap</div>
+                            <div id="presenterBitrateCap" class="monitor-value">--</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">FPS Cap</div>
+                            <div id="presenterFpsCap" class="monitor-value">--</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Codec</div>
+                            <div id="presenterCodec" class="monitor-value">--</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">FEC / RTX</div>
+                            <div id="presenterFecRtx" class="monitor-value">--</div>
+                        </div>
+                    </div>
+
+                    <div class="monitor-row">
+                        <div class="monitor-item">
+                            <div class="monitor-label">Daily Bandwidth</div>
+                            <div id="bandwidthUsage" class="monitor-value">--</div>
+                        </div>
+
+                        <div class="monitor-item">
+                            <div class="monitor-label">Estimated SFU Egress</div>
+                            <div id="sfuEgress" class="monitor-value">--</div>
+                        </div>
+
                         <div class="monitor-item" style="flex: 1;">
                             <div class="monitor-label">Last Update</div>
                             <div id="lastUpdate" class="monitor-value">--</div>
                         </div>
                     </div>
+                </div>
+
+                <div id="displayApprovalStatus" class="alert alert-warning" style="margin-top: 15px; display: none;"></div>
+
+                <div class="display-table-wrapper">
+                    <table class="display-table">
+                        <thead>
+                            <tr>
+                                <th>Display ID</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Resolution</th>
+                                <th>FPS</th>
+                                <th>Bitrate</th>
+                                <th>Packet Loss</th>
+                                <th>Health</th>
+                                <th>Last Update</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="displayTableBody">
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -494,11 +532,81 @@
         font-size: 0.85rem;
     }
 
-    /* WebRTC Signal Monitor */
+    /* LiveKit Screen Share Monitor */
     .signal-monitor {
         background: #f8f9fa;
         border-radius: 8px;
         padding: 20px;
+    }
+
+    .display-table-wrapper {
+        margin-top: 15px;
+        overflow-x: auto;
+    }
+
+    .display-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+    }
+
+    .display-table th,
+    .display-table td {
+        padding: 10px;
+        border-bottom: 1px solid #e9ecef;
+        text-align: left;
+    }
+
+    .display-table th {
+        background: #f1f3f5;
+        color: #2c3e50;
+        font-weight: 600;
+    }
+
+    .role-badge,
+    .health-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .role-protected {
+        background: #ffe8a1;
+        color: #7a4f00;
+    }
+
+    .role-normal {
+        background: #e7f1ff;
+        color: #1b4f72;
+    }
+
+    .role-pending {
+        background: #f5f5f5;
+        color: #7f8c8d;
+    }
+
+    .health-green {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .health-amber {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .health-red {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .btn-approve {
+        margin-right: 6px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
     }
 
     .monitor-row {
@@ -880,18 +988,11 @@ function toggleScreenShareSettings() {
 // Load display settings
 async function loadDisplaySettings() {
     try {
-        const response = await apiRequest('/admin/settings');
-        const settings = await response.json();
+        const settings = await apiRequest('/admin/settings');
 
         if (settings.display_mode) {
             document.getElementById('displayModeSelect').value = settings.display_mode;
             toggleScreenShareSettings();
-        }
-        if (settings.screen_share_fps) {
-            document.getElementById('fpsSettingSelect').value = settings.screen_share_fps;
-        }
-        if (settings.screen_share_quality) {
-            document.getElementById('qualitySettingSelect').value = settings.screen_share_quality;
         }
     } catch (error) {
         console.error('Failed to load display settings:', error);
@@ -901,8 +1002,6 @@ async function loadDisplaySettings() {
 // Save display settings
 async function saveDisplaySettings() {
     const displayMode = document.getElementById('displayModeSelect').value;
-    const fps = document.getElementById('fpsSettingSelect').value;
-    const quality = document.getElementById('qualitySettingSelect').value;
 
     try {
         // Update display mode
@@ -910,17 +1009,7 @@ async function saveDisplaySettings() {
             method: 'PUT'
         });
 
-        // Update FPS setting
-        await apiRequest(`/admin/settings/screen_share_fps?value=${fps}`, {
-            method: 'PUT'
-        });
-
-        // Update quality setting
-        await apiRequest(`/admin/settings/screen_share_quality?value=${quality}`, {
-            method: 'PUT'
-        });
-
-        showAlert('Display settings saved successfully', 'success');
+        showAlert('Display mode saved successfully', 'success');
     } catch (error) {
         showAlert('Failed to save settings: ' + error.message, 'error');
     }
@@ -935,10 +1024,18 @@ function logout() {
 // WebRTC Signal Monitoring
 let monitorWebSocket = null;
 let monitorSessionId = null;
+const displayRegistry = new Map();
+let bandwidthTimer = null;
 
 function initializeMonitor(sessionId) {
     monitorSessionId = sessionId;
     connectMonitorWebSocket();
+    refreshLiveKitDisplays();
+    refreshBandwidthStatus();
+    if (bandwidthTimer) {
+        clearInterval(bandwidthTimer);
+    }
+    bandwidthTimer = setInterval(refreshBandwidthStatus, 60000);
 }
 
 function connectMonitorWebSocket() {
@@ -952,6 +1049,7 @@ function connectMonitorWebSocket() {
 
     monitorWebSocket.onopen = () => {
         console.log('[Monitor] WebSocket connected');
+        refreshLiveKitDisplays();
     };
 
     monitorWebSocket.onmessage = (event) => {
@@ -964,6 +1062,8 @@ function connectMonitorWebSocket() {
         } else if (data.event === 'presenter.stopped' || data.event === 'presenter.disconnected') {
             updatePresenterStatusIndicator('disconnected', 'Disconnected');
             updateWebRTCStatus('disconnected', 'Not Connected');
+        } else if (data.event === 'display.pending' || data.event === 'display.approved' || data.event === 'display.status') {
+            upsertDisplayFromEvent(data);
         } else if (data.event === 'buzzer.status') {
             updateBuzzerHeartbeatMonitor(data);
         } else if (data.event === 'score.status') {
@@ -983,7 +1083,7 @@ function updatePresenterStatus(data) {
     const text = data.is_presenting ? 'Presenting' : 'Disconnected';
     updatePresenterStatusIndicator(status, text);
 
-    // Update WebRTC status
+    // Update LiveKit connection status
     if (data.webrtc_state === 'connected') {
         updateWebRTCStatus('connected', 'Connected');
     } else if (data.webrtc_state === 'failed') {
@@ -992,13 +1092,21 @@ function updatePresenterStatus(data) {
         updateWebRTCStatus('disconnected', data.webrtc_state || 'Connecting');
     }
 
-    // Update quality info
-    if (data.frame_rate) {
-        document.getElementById('monitorFps').textContent = data.frame_rate;
-    }
-    if (data.resolution) {
-        document.getElementById('monitorResolution').textContent = data.resolution;
-    }
+    // Update presenter stats
+    const bitrate = data.bitrate !== undefined && data.bitrate !== null
+        ? `${(data.bitrate / 1000000).toFixed(2)} Mbps`
+        : '--';
+    document.getElementById('presenterBitrate').textContent = bitrate;
+    document.getElementById('presenterBitrateCap').textContent = data.bitrate_cap !== undefined && data.bitrate_cap !== null
+        ? `${(data.bitrate_cap / 1000000).toFixed(2)} Mbps`
+        : '--';
+    document.getElementById('presenterFpsCap').textContent = data.fps_cap !== undefined && data.fps_cap !== null
+        ? data.fps_cap
+        : '--';
+    document.getElementById('presenterCodec').textContent = data.codec || '--';
+    document.getElementById('presenterFecRtx').textContent = (data.fec !== undefined || data.rtx !== undefined)
+        ? `${data.fec ? 'FEC' : 'FEC off'} / ${data.rtx ? 'RTX' : 'RTX off'}`
+        : '--';
 
     // Update last update time
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
@@ -1017,9 +1125,170 @@ function updateWebRTCStatus(status, text) {
 }
 
 function updateDisplayCount(count) {
-    document.getElementById('displayCount').textContent = `${count} connected`;
+    document.getElementById('displayCount').textContent = count;
 }
 
+function upsertDisplayFromEvent(event) {
+    if (!event.display_id) {
+        return;
+    }
+
+    const existing = displayRegistry.get(event.display_id) || {
+        display_id: event.display_id,
+        metrics: {}
+    };
+
+    const metrics = { ...(existing.metrics || {}) };
+    if (event.resolution !== undefined) metrics.resolution = event.resolution;
+    if (event.frameRate !== undefined) metrics.frameRate = event.frameRate;
+    if (event.bitrate !== undefined) metrics.bitrate = event.bitrate;
+    if (event.packetLoss !== undefined) metrics.packetLoss = event.packetLoss;
+    if (event.jitter !== undefined) metrics.jitter = event.jitter;
+
+    const updated = {
+        ...existing,
+        status: event.status || existing.status || 'pending',
+        role: event.role || existing.role || null,
+        last_seen: event.last_seen || existing.last_seen || Math.floor(Date.now() / 1000),
+        metrics: metrics
+    };
+
+    displayRegistry.set(event.display_id, updated);
+    renderDisplayTable();
+}
+
+function computeDisplayHealth(display) {
+    if (display.status !== 'connected') {
+        return { label: 'amber', className: 'health-amber' };
+    }
+
+    const role = display.role || 'pending';
+    const metrics = display.metrics || {};
+    const bitrate = metrics.bitrate || 0;
+    const fps = metrics.frameRate || 0;
+    const loss = metrics.packetLoss || 0;
+
+    const minBitrate = role === 'protected' ? 3500000 : 1200000;
+    const minFps = role === 'protected' ? 10 : 8;
+    const maxLoss = 0.05;
+
+    if (loss > maxLoss || bitrate < minBitrate || fps < minFps) {
+        return { label: 'red', className: 'health-red' };
+    }
+    return { label: 'green', className: 'health-green' };
+}
+
+function renderDisplayTable() {
+    const tableBody = document.getElementById('displayTableBody');
+    if (!tableBody) {
+        return;
+    }
+
+    const displays = Array.from(displayRegistry.values());
+    const protectedCount = displays.filter(display => display.role === 'protected').length;
+    const activeCount = displays.filter(display => display.status === 'connected').length;
+    updateDisplayCount(activeCount);
+
+    const egressBps = displays.reduce((sum, display) => sum + (display.metrics?.bitrate || 0), 0);
+    document.getElementById('sfuEgress').textContent = egressBps
+        ? `${(egressBps / 1000000).toFixed(2)} Mbps`
+        : '--';
+
+    const approvalStatus = document.getElementById('displayApprovalStatus');
+    if (protectedCount < 2) {
+        approvalStatus.style.display = 'block';
+        approvalStatus.textContent = `Protected displays required: ${protectedCount}/2 approved`;
+    } else {
+        approvalStatus.style.display = 'none';
+    }
+
+    if (displays.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="10">No displays registered</td></tr>';
+        return;
+    }
+
+    tableBody.innerHTML = '';
+    displays.forEach(display => {
+        const metrics = display.metrics || {};
+        const role = display.role || 'pending';
+        const status = display.status || 'pending';
+        const health = computeDisplayHealth(display);
+        const bitrateText = metrics.bitrate
+            ? `${(metrics.bitrate / 1000000).toFixed(2)} Mbps`
+            : '--';
+        const packetLossText = metrics.packetLoss !== undefined
+            ? `${(metrics.packetLoss * 100).toFixed(1)}%`
+            : '--';
+
+        const roleClass = role === 'protected'
+            ? 'role-badge role-protected'
+            : role === 'normal'
+                ? 'role-badge role-normal'
+                : 'role-badge role-pending';
+
+        const actions = !display.role
+            ? `
+                <button class="btn btn-success btn-approve" onclick="approveDisplay('${display.display_id}', 'protected')">Protect</button>
+                <button class="btn btn-secondary btn-approve" onclick="approveDisplay('${display.display_id}', 'normal')">Normal</button>
+            `
+            : '<span class="text-muted">Approved</span>';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${display.display_id}</td>
+            <td><span class="${roleClass}">${role}</span></td>
+            <td>${status}</td>
+            <td>${metrics.resolution || '--'}</td>
+            <td>${metrics.frameRate ? Math.round(metrics.frameRate) : '--'}</td>
+            <td>${bitrateText}</td>
+            <td>${packetLossText}</td>
+            <td><span class="health-badge ${health.className}">${health.label}</span></td>
+            <td>${display.last_seen ? new Date(display.last_seen * 1000).toLocaleTimeString() : '--'}</td>
+            <td>${actions}</td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+async function refreshLiveKitDisplays() {
+    if (!monitorSessionId) {
+        return;
+    }
+    try {
+        const response = await apiRequest(`/admin/livekit/displays?session_id=${monitorSessionId}`);
+        displayRegistry.clear();
+        (response.displays || []).forEach(display => {
+            displayRegistry.set(display.display_id, display);
+        });
+        renderDisplayTable();
+    } catch (error) {
+        console.error('Failed to load display registry:', error);
+    }
+}
+
+async function approveDisplay(displayId, role) {
+    if (!monitorSessionId) {
+        return;
+    }
+    try {
+        await apiRequest(`/admin/livekit/displays/${displayId}/approve`, {
+            method: 'POST',
+            body: JSON.stringify({ session_id: monitorSessionId, role: role })
+        });
+        await refreshLiveKitDisplays();
+    } catch (error) {
+        showAlert('Failed to approve display: ' + error.message, 'error');
+    }
+}
+
+async function refreshBandwidthStatus() {
+    try {
+        const status = await apiRequest('/admin/bandwidth/status');
+        document.getElementById('bandwidthUsage').textContent = `${status.total_gb} / ${status.budget_gb} GB`;
+    } catch (error) {
+        console.error('Failed to load bandwidth status:', error);
+    }
+}
 function updateBuzzerHeartbeatMonitor(data) {
     // Update heartbeat status indicator
     const statusIndicator = document.getElementById('buzzerHeartbeatStatus');

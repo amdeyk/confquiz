@@ -211,7 +211,7 @@ Add session ID to URL: `http://localhost:8000/display?session=1`
 
 ⚠️ **Change these in production!**
 
-Edit `.env` file:
+Edit `.env` file (or set `ENV_FILE` to use a different filename, such as `.env2` for this update):
 ```env
 ADMIN_USERNAME=yourusername
 ADMIN_PASSWORD=yourstrongpassword

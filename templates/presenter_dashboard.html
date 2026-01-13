@@ -28,7 +28,8 @@
             <div class="step">2️⃣ Open your PowerPoint presentation in full-screen mode</div>
             <div class="step">3️⃣ Click "Start Screen Sharing" and select the presentation window</div>
             <div class="step">4️⃣ Navigate slides using PowerPoint controls - they'll appear on the main display!</div>
-            <div class="step">💡 <strong>Tip:</strong> Use 10 FPS (recommended) for smooth presentation with good quality</div>
+            <div class="step">⚠️ Ensure at least 2 protected displays are approved before starting</div>
+            <div class="step">💡 <strong>Tip:</strong> Use 10 FPS (recommended) or 15 FPS for maximum clarity</div>
         </div>
     </div>
 
@@ -43,8 +44,8 @@
             <div class="settings-row">
                 <label>Frame Rate:</label>
                 <select id="fpsSelect">
-                    <option value="5">5 FPS (Low bandwidth)</option>
                     <option value="10" selected>10 FPS (Recommended)</option>
+                    <option value="15">15 FPS (Highest clarity)</option>
                 </select>
             </div>
         </div>
@@ -279,19 +280,51 @@
     }
 </style>
 
+<script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
 <script>
 let websocket = null;
-let peerConnection = null;
-let screenStream = null;
+let livekitRoom = null;
+let screenTrack = null;
+let screenSender = null;
 let sessionId = null;
 let frameRate = 10;
+let qualityIndex = 0;
+let normalStableCount = 0;
+let bandwidthLock = false;
+let lastOutboundBytes = null;
+let lastOutboundTimestamp = null;
+let lastBandwidthStatus = null;
+let codecWarned = false;
+let lastAppliedEncoding = null;
 const presenterId = 'presenter_' + Math.random().toString(36).substr(2, 9);
 const connectedDisplays = new Map(); // Track display health status
+
+const QUALITY_LEVELS = [
+    { maxBitrate: 4000000, maxFramerate: 15 },
+    { maxBitrate: 3500000, maxFramerate: 12 },
+    { maxBitrate: 3500000, maxFramerate: 10 }
+];
+
+const PROTECTED_MIN = {
+    maxBitrate: 3500000,
+    minFramerate: 10
+};
+
+const NORMAL_THRESHOLDS = {
+    minBitrate: 1200000,
+    minFramerate: 8,
+    maxPacketLoss: 0.05
+};
 
 // Check browser compatibility
 window.addEventListener('load', () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
         document.getElementById('compatibilityWarning').style.display = 'block';
+        document.getElementById('startSharingBtn').disabled = true;
+    }
+    if (!window.livekit) {
+        document.getElementById('compatibilityWarning').style.display = 'block';
+        document.getElementById('compatibilityWarning').textContent = 'LiveKit client failed to load. Check network access.';
         document.getElementById('startSharingBtn').disabled = true;
     }
     loadSessions();
@@ -328,7 +361,77 @@ document.getElementById('sessionSelect').addEventListener('change', async (e) =>
 // FPS selection
 document.getElementById('fpsSelect').addEventListener('change', (e) => {
     frameRate = parseInt(e.target.value);
+    applyEncodingSettings();
 });
+
+function getEffectiveEncoding() {
+    const level = QUALITY_LEVELS[qualityIndex];
+    return {
+        maxBitrate: level.maxBitrate,
+        maxFramerate: Math.min(level.maxFramerate, frameRate)
+    };
+}
+
+function normalizeStats(reports) {
+    const all = [];
+    if (!reports) {
+        return all;
+    }
+    const reportList = Array.isArray(reports) ? reports : [reports];
+    for (const report of reportList) {
+        if (!report) {
+            continue;
+        }
+        report.forEach(stat => all.push(stat));
+    }
+    return all;
+}
+
+async function collectOutboundStats() {
+    if (!livekitRoom) {
+        return null;
+    }
+    const stats = normalizeStats(await livekitRoom.getStats());
+    const outbound = stats.find(stat =>
+        stat.type === 'outbound-rtp' &&
+        (stat.kind === 'video' || stat.mediaType === 'video') &&
+        !stat.isRemote
+    );
+
+    if (!outbound) {
+        return null;
+    }
+
+    let codec = null;
+    if (outbound.codecId) {
+        const codecStat = stats.find(stat => stat.id === outbound.codecId);
+        if (codecStat && codecStat.mimeType) {
+            codec = codecStat.mimeType;
+        }
+    }
+
+    if (codec && !codec.toLowerCase().includes('vp9') && !codecWarned) {
+        codecWarned = true;
+        console.warn('[LiveKit] Codec fallback detected:', codec);
+        showAlert(`Codec fallback detected: ${codec}`, 'warning');
+    }
+
+    let bitrate = null;
+    const now = Date.now();
+    if (outbound.bytesSent != null) {
+        if (lastOutboundBytes != null && lastOutboundTimestamp != null) {
+            const bytesDelta = outbound.bytesSent - lastOutboundBytes;
+            const timeDelta = (now - lastOutboundTimestamp) / 1000;
+            if (timeDelta > 0) {
+                bitrate = (bytesDelta * 8) / timeDelta;
+            }
+        }
+        lastOutboundBytes = outbound.bytesSent;
+        lastOutboundTimestamp = now;
+    }
+
+    return { bitrate, codec };
+}
 
 // Connect WebSocket
 async function connectWebSocket() {
@@ -353,7 +456,6 @@ async function connectWebSocket() {
         document.getElementById('connectionStatus').textContent = 'Reconnecting...';
         document.getElementById('connectionStatus').className = 'status-badge disconnected';
 
-        // Attempt to reconnect after 2 seconds
         setTimeout(() => {
             if (sessionId) {
                 console.log('Reconnecting WebSocket...');
@@ -370,74 +472,179 @@ async function connectWebSocket() {
         const message = JSON.parse(event.data);
         console.log('WebSocket message:', message);
 
-        // Handle display ready (reconnection while presenting)
-        if (message.event === 'display.ready') {
-            console.log('[WebRTC] Display reconnected, re-sending offer');
-
-            // Track new display
-            const displayId = message.display_id;
-            connectedDisplays.set(displayId, {
-                id: displayId,
-                status: 'connecting',
-                lastUpdate: Date.now()
-            });
-            updateDisplayHealth();
-
-            if (screenStream && peerConnection) {
-                try {
-                    // Re-create and send offer for the new display
-                    const offer = await peerConnection.createOffer({
-                        offerToReceiveAudio: false,
-                        offerToReceiveVideo: false
-                    });
-
-                    offer.sdp = preferCodec(offer.sdp, 'video', 'VP9');
-                    await peerConnection.setLocalDescription(offer);
-
-                    if (websocket && websocket.readyState === WebSocket.OPEN) {
-                        websocket.send(JSON.stringify({
-                            type: 'offer',
-                            sdp: offer.sdp,
-                            presenter_id: presenterId
-                        }));
-                        console.log('[WebRTC] Offer re-sent to reconnected display');
-                    }
-                } catch (error) {
-                    console.error('[WebRTC] Failed to re-send offer:', error);
-                }
-            }
-        }
-
-        // Handle display status updates (health checks)
         if (message.event === 'display.status') {
             const displayId = message.display_id;
-            const status = message.status;
-
             connectedDisplays.set(displayId, {
                 id: displayId,
-                status: status,
+                status: message.status,
+                role: message.role,
                 resolution: message.resolution,
                 frameRate: message.frameRate,
+                bitrate: message.bitrate,
+                packetLoss: message.packetLoss,
+                jitter: message.jitter,
                 lastUpdate: Date.now()
             });
-
             updateDisplayHealth();
-            console.log('[WebRTC] Display status update:', displayId, status);
-        }
-
-        // Handle WebRTC answer from display
-        if (message.event === 'webrtc.answer') {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription({
-                type: 'answer',
-                sdp: message.sdp
-            }));
-        }
-
-        // Handle ICE candidate from display
-        if (message.event === 'webrtc.ice.display') {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(message.candidate));
         }
     };
+}
+
+async function fetchLiveKitToken() {
+    return await apiRequest('/admin/presenter/livekit-token', {
+        method: 'POST',
+        body: JSON.stringify({ session_id: parseInt(sessionId, 10) })
+    });
+}
+
+async function setupLiveKit() {
+    const tokenResponse = await fetchLiveKitToken();
+    const room = new livekit.Room({
+        adaptiveStream: false,
+        dynacast: false,
+        publishDefaults: {
+            simulcast: false,
+            videoCodec: 'vp9',
+            scalabilityMode: 'L1T3',
+            videoEncoding: getEffectiveEncoding()
+        }
+    });
+
+    room.on('disconnected', () => {
+        console.warn('[LiveKit] Disconnected');
+        sendStatusUpdate();
+    });
+
+    await room.connect(tokenResponse.livekit_url, tokenResponse.token, { autoSubscribe: false });
+    livekitRoom = room;
+    return tokenResponse;
+}
+
+async function publishScreenTrack() {
+    const tracks = await livekit.createLocalScreenTracks({ audio: false, video: true });
+    screenTrack = tracks.find(track => track.kind === 'video');
+    if (!screenTrack) {
+        throw new Error('Screen capture track not available');
+    }
+
+    screenTrack.mediaStreamTrack.contentHint = 'detail';
+    const settings = screenTrack.mediaStreamTrack.getSettings();
+
+    await screenTrack.mediaStreamTrack.applyConstraints({
+        frameRate: { ideal: frameRate, max: frameRate },
+        width: { ideal: settings.width },
+        height: { ideal: settings.height }
+    });
+
+    const preview = document.getElementById('localPreview');
+    preview.srcObject = new MediaStream([screenTrack.mediaStreamTrack]);
+
+    const publication = await livekitRoom.localParticipant.publishTrack(screenTrack, {
+        simulcast: false,
+        videoCodec: 'vp9',
+        scalabilityMode: 'L1T3',
+        videoEncoding: getEffectiveEncoding()
+    });
+
+    screenSender = publication.trackSender || publication.sender;
+    await applyEncodingSettings();
+
+    screenTrack.mediaStreamTrack.addEventListener('ended', () => {
+        stopScreenShare();
+    });
+}
+
+async function applyEncodingSettings() {
+    if (!screenSender) {
+        return;
+    }
+    const encoding = getEffectiveEncoding();
+    if (bandwidthLock && lastAppliedEncoding) {
+        encoding.maxBitrate = Math.min(encoding.maxBitrate, lastAppliedEncoding.maxBitrate);
+        encoding.maxFramerate = Math.min(encoding.maxFramerate, lastAppliedEncoding.maxFramerate);
+    }
+    const parameters = screenSender.getParameters();
+    if (!parameters.encodings || parameters.encodings.length === 0) {
+        parameters.encodings = [{}];
+    }
+    parameters.encodings[0].maxBitrate = encoding.maxBitrate;
+    parameters.encodings[0].maxFramerate = encoding.maxFramerate;
+    parameters.encodings[0].scaleResolutionDownBy = 1.0;
+    parameters.degradationPreference = 'maintain-resolution';
+
+    try {
+        await screenSender.setParameters(parameters);
+        lastAppliedEncoding = {
+            maxBitrate: encoding.maxBitrate,
+            maxFramerate: encoding.maxFramerate
+        };
+        document.getElementById('currentFps').textContent = encoding.maxFramerate;
+    } catch (error) {
+        console.warn('[LiveKit] Failed to apply encoding settings:', error);
+    }
+}
+
+function getDisplayGroups() {
+    const protectedDisplays = [];
+    const normalDisplays = [];
+    for (const display of connectedDisplays.values()) {
+        if (display.role === 'protected') {
+            protectedDisplays.push(display);
+        } else {
+            normalDisplays.push(display);
+        }
+    }
+    return { protectedDisplays, normalDisplays };
+}
+
+function protectedDisplaysHealthy(protectedDisplays) {
+    if (protectedDisplays.length === 0) {
+        return false;
+    }
+    return protectedDisplays.every(display =>
+        (display.bitrate || 0) >= PROTECTED_MIN.maxBitrate &&
+        (display.frameRate || 0) >= PROTECTED_MIN.minFramerate
+    );
+}
+
+function normalDisplaysUnderPressure(normalDisplays) {
+    return normalDisplays.some(display => {
+        const bitrateOk = (display.bitrate || 0) >= NORMAL_THRESHOLDS.minBitrate;
+        const fpsOk = (display.frameRate || 0) >= NORMAL_THRESHOLDS.minFramerate;
+        const lossOk = (display.packetLoss || 0) <= NORMAL_THRESHOLDS.maxPacketLoss;
+        return !(bitrateOk && fpsOk && lossOk);
+    });
+}
+
+async function evaluateQuality() {
+    if (!screenSender) {
+        return;
+    }
+    const { protectedDisplays, normalDisplays } = getDisplayGroups();
+    const protectedOk = protectedDisplaysHealthy(protectedDisplays);
+
+    if (!protectedOk) {
+        console.warn('[Quality] Protected displays below minimum threshold');
+        return;
+    }
+
+    const underPressure = normalDisplaysUnderPressure(normalDisplays);
+    if (underPressure && qualityIndex < QUALITY_LEVELS.length - 1) {
+        qualityIndex += 1;
+        normalStableCount = 0;
+        await applyEncodingSettings();
+        return;
+    }
+
+    if (!underPressure) {
+        normalStableCount += 1;
+    }
+
+    if (!bandwidthLock && normalStableCount >= 3 && qualityIndex > 0) {
+        qualityIndex -= 1;
+        normalStableCount = 0;
+        await applyEncodingSettings();
+    }
 }
 
 // Start screen sharing
@@ -448,195 +655,37 @@ async function startScreenShare() {
     }
 
     try {
-        // Get screen stream
-        screenStream = await navigator.mediaDevices.getDisplayMedia({
-            video: {
-                cursor: 'always',
-                displaySurface: 'window'
-            },
-            audio: false
-        });
+        await setupLiveKit();
+        await publishScreenTrack();
 
-        // Show local preview
-        document.getElementById('localPreview').srcObject = screenStream;
-
-        // Setup WebRTC
-        await setupWebRTC();
-
-        // Show presenting state
         document.getElementById('notPresentingState').style.display = 'none';
         document.getElementById('presentingState').style.display = 'block';
 
-        // Notify server
         if (websocket && websocket.readyState === WebSocket.OPEN) {
             websocket.send(JSON.stringify({
                 action: 'start-presenting',
                 presenter_id: presenterId
             }));
         }
-
-        // Handle stream ending
-        screenStream.getVideoTracks()[0].addEventListener('ended', () => {
-            stopScreenShare();
-        });
-
     } catch (error) {
         console.error('Failed to start screen sharing:', error);
         showAlert('Failed to start screen sharing: ' + error.message, 'error');
-    }
-}
-
-// Helper function to prefer specific codec in SDP
-function preferCodec(sdp, type, codec) {
-    const lines = sdp.split('\r\n');
-    const mLineIndex = lines.findIndex(line => line.startsWith(`m=${type}`));
-
-    if (mLineIndex === -1) return sdp;
-
-    // Find the codec payload type
-    const codecPattern = new RegExp(`a=rtpmap:(\\d+) ${codec}\\/\\d+`, 'i');
-    let codecPayload = null;
-
-    for (let i = mLineIndex; i < lines.length; i++) {
-        const match = lines[i].match(codecPattern);
-        if (match) {
-            codecPayload = match[1];
-            break;
-        }
-        if (lines[i].startsWith('m=')) break;
-    }
-
-    if (!codecPayload) return sdp; // Codec not found
-
-    // Move preferred codec to front of m-line
-    const mLine = lines[mLineIndex].split(' ');
-    const payloadIndex = mLine.indexOf(codecPayload);
-
-    if (payloadIndex > 3) { // After m=video/audio port proto
-        mLine.splice(payloadIndex, 1);
-        mLine.splice(3, 0, codecPayload);
-        lines[mLineIndex] = mLine.join(' ');
-    }
-
-    return lines.join('\r\n');
-}
-
-// Setup WebRTC peer connection
-async function setupWebRTC() {
-    // Create peer connection
-    peerConnection = new RTCPeerConnection({
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
-    });
-
-    // Monitor connection state and send status updates
-    peerConnection.onconnectionstatechange = () => {
-        console.log('[WebRTC] Connection state:', peerConnection.connectionState);
-        sendStatusUpdate();
-    };
-
-    peerConnection.oniceconnectionstatechange = () => {
-        console.log('[WebRTC] ICE connection state:', peerConnection.iceConnectionState);
-        sendStatusUpdate();
-    };
-
-    // Use original screen stream directly for maximum quality
-    const videoTrack = screenStream.getVideoTracks()[0];
-
-    // Get current settings
-    const settings = videoTrack.getSettings();
-    console.log(`Screen capture resolution: ${settings.width}x${settings.height}`);
-
-    // Apply constraints to limit frame rate but maintain quality
-    await videoTrack.applyConstraints({
-        frameRate: { ideal: frameRate, max: frameRate },
-        width: { ideal: settings.width },
-        height: { ideal: settings.height }
-    });
-
-    // Add track to peer connection with maximum quality
-    const sender = peerConnection.addTrack(videoTrack, screenStream);
-
-    // Set encoding parameters for very high quality
-    const parameters = sender.getParameters();
-    if (!parameters.encodings || parameters.encodings.length === 0) {
-        parameters.encodings = [{}];
-    }
-
-    // Set very high bitrate for excellent quality (5 Mbps max)
-    parameters.encodings[0].maxBitrate = 5000000; // 5 Mbps for high quality
-    parameters.encodings[0].maxFramerate = frameRate;
-    parameters.encodings[0].scaleResolutionDownBy = 1.0; // No downscaling
-
-    await sender.setParameters(parameters);
-
-    console.log(`WebRTC encoding: ${frameRate} FPS, 5 Mbps max bitrate`);
-
-    // Update FPS display
-    document.getElementById('currentFps').textContent = frameRate;
-
-    // Handle ICE candidates
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate && websocket && websocket.readyState === WebSocket.OPEN) {
-            try {
-                websocket.send(JSON.stringify({
-                    type: 'ice-candidate',
-                    candidate: event.candidate,
-                    presenter_id: presenterId
-                }));
-            } catch (error) {
-                console.error('[WebRTC] Failed to send ICE candidate:', error);
-            }
-        } else if (event.candidate) {
-            console.warn('[WebRTC] Cannot send ICE candidate, WebSocket not ready');
-        }
-    };
-
-    // Create and send offer with video quality constraints
-    const offer = await peerConnection.createOffer({
-        offerToReceiveAudio: false,
-        offerToReceiveVideo: false
-    });
-
-    // Modify SDP to prefer VP9 codec for better compression
-    offer.sdp = preferCodec(offer.sdp, 'video', 'VP9');
-
-    await peerConnection.setLocalDescription(offer);
-
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-        try {
-            websocket.send(JSON.stringify({
-                type: 'offer',
-                sdp: offer.sdp,
-                presenter_id: presenterId
-            }));
-            console.log('[WebRTC] Offer sent successfully');
-        } catch (error) {
-            console.error('[WebRTC] Failed to send offer:', error);
-            throw new Error('Failed to send WebRTC offer: WebSocket error');
-        }
-    } else {
-        console.error('[WebRTC] Cannot send offer: WebSocket not connected');
-        throw new Error('WebSocket not connected. Please wait for reconnection.');
+        await stopScreenShare();
     }
 }
 
 // Stop screen sharing
-function stopScreenShare() {
-    // Stop screen stream
-    if (screenStream) {
-        screenStream.getTracks().forEach(track => track.stop());
-        screenStream = null;
+async function stopScreenShare() {
+    if (screenTrack) {
+        screenTrack.stop();
+        screenTrack = null;
     }
 
-    // Close peer connection
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
+    if (livekitRoom) {
+        await livekitRoom.disconnect();
+        livekitRoom = null;
     }
 
-    // Notify server
     if (websocket && websocket.readyState === WebSocket.OPEN) {
         websocket.send(JSON.stringify({
             action: 'stop-presenting',
@@ -644,42 +693,76 @@ function stopScreenShare() {
         }));
     }
 
-    // Reset UI
     document.getElementById('notPresentingState').style.display = 'block';
     document.getElementById('presentingState').style.display = 'none';
     document.getElementById('localPreview').srcObject = null;
 }
 
 // Send status update to admin dashboard
-function sendStatusUpdate() {
+async function sendStatusUpdate() {
     if (!websocket || websocket.readyState !== WebSocket.OPEN) {
         console.log('[Status] WebSocket not ready, skipping status update');
         return;
     }
 
-    try {
-        const status = {
-            action: 'status-update',
-            presenter_id: presenterId,
-            is_presenting: !!screenStream,
-            webrtc_state: peerConnection ? peerConnection.connectionState : 'disconnected',
-            ice_state: peerConnection ? peerConnection.iceConnectionState : 'disconnected',
-            frame_rate: frameRate,
-            resolution: screenStream ? `${screenStream.getVideoTracks()[0].getSettings().width}x${screenStream.getVideoTracks()[0].getSettings().height}` : null
-        };
+    const outboundStats = await collectOutboundStats();
+    const encoding = getEffectiveEncoding();
+    const resolution = screenTrack
+        ? `${screenTrack.mediaStreamTrack.getSettings().width}x${screenTrack.mediaStreamTrack.getSettings().height}`
+        : null;
 
-        websocket.send(JSON.stringify(status));
+    const status = {
+        action: 'status-update',
+        presenter_id: presenterId,
+        is_presenting: !!screenTrack,
+        webrtc_state: livekitRoom ? livekitRoom.state : 'disconnected',
+        frame_rate: encoding.maxFramerate,
+        resolution: resolution,
+        bitrate: outboundStats ? outboundStats.bitrate : null,
+        codec: outboundStats ? outboundStats.codec : null,
+        bitrate_cap: encoding.maxBitrate,
+        fps_cap: encoding.maxFramerate,
+        fec: true,
+        rtx: true,
+        bandwidth_locked: bandwidthLock
+    };
+
+    websocket.send(JSON.stringify(status));
+}
+
+async function refreshBandwidthStatus() {
+    try {
+        const status = await apiRequest('/admin/bandwidth/status');
+        bandwidthLock = status.status === 'critical';
+        if (bandwidthLock && screenSender) {
+            applyEncodingSettings();
+        }
+        if (lastBandwidthStatus !== status.status) {
+            lastBandwidthStatus = status.status;
+            if (status.status === 'warn') {
+                showAlert('Bandwidth warning: daily usage above 160 GB', 'warning');
+            } else if (status.status === 'critical') {
+                showAlert('Bandwidth critical: bitrate increases locked', 'error');
+            }
+        }
     } catch (error) {
-        console.error('[Status] Failed to send status update:', error);
+        console.warn('[Bandwidth] Failed to fetch status:', error);
     }
 }
 
 // Send periodic status updates
 setInterval(() => {
-    if (screenStream && peerConnection) {
+    if (screenTrack && livekitRoom) {
         sendStatusUpdate();
+        evaluateQuality();
     }
-}, 3000); // Every 3 seconds
+}, 3000);
+
+setInterval(() => {
+    refreshBandwidthStatus();
+}, 60000);
+
+refreshBandwidthStatus();
 
 // Update display health status UI
 function updateDisplayHealth() {
@@ -688,10 +771,8 @@ function updateDisplayHealth() {
 
     if (!healthList) return;
 
-    // Update count
     displayCount.textContent = connectedDisplays.size;
 
-    // Clear old stale displays (no update in 15 seconds)
     const now = Date.now();
     for (const [id, display] of connectedDisplays.entries()) {
         if (now - display.lastUpdate > 15000) {
@@ -699,7 +780,6 @@ function updateDisplayHealth() {
         }
     }
 
-    // Update display list
     if (connectedDisplays.size === 0) {
         healthList.innerHTML = '<div class="display-status">No displays connected</div>';
         return;
@@ -710,62 +790,35 @@ function updateDisplayHealth() {
         const item = document.createElement('div');
         item.className = 'display-item';
 
-        if (display.status === 'video-healthy' || display.status === 'video-active') {
-            item.classList.add('active');
-        } else if (display.status === 'video-error') {
-            item.classList.add('error');
-        }
-
-        const statusText = {
-            'connecting': 'Connecting...',
-            'video-playing': 'Video Starting',
-            'video-active': 'Active',
-            'video-healthy': 'Healthy',
-            'video-error': 'Error',
-            'video-stopped': 'Stopped'
-        }[display.status] || display.status;
-
+        const role = display.role || 'pending';
+        const statusText = display.status || 'pending';
         const details = display.resolution
             ? `${display.resolution} @ ${Math.round(display.frameRate || 0)} FPS`
             : '';
+        const bitrateText = display.bitrate ? `${(display.bitrate / 1000000).toFixed(2)} Mbps` : '';
+
+        const isProtected = role === 'protected';
+        const hasError = display.packetLoss && display.packetLoss > NORMAL_THRESHOLDS.maxPacketLoss;
+
+        if (display.status === 'connected') {
+            item.classList.add('active');
+        } else if (hasError) {
+            item.classList.add('error');
+        }
 
         item.innerHTML = `
             <div>
                 <strong>${id.substring(0, 12)}...</strong>
-                <div class="display-status">${statusText}${details ? ' - ' + details : ''}</div>
+                <div class="display-status">${statusText} (${role})</div>
+                <div class="display-status">${details}${bitrateText ? ' - ' + bitrateText : ''}</div>
             </div>
             <div style="color: ${item.classList.contains('active') ? '#27ae60' : item.classList.contains('error') ? '#e74c3c' : '#95a5a6'}">
-                ${item.classList.contains('active') ? '●' : item.classList.contains('error') ? '✕' : '○'}
+                ${isProtected ? '??' : '?'}
             </div>
         `;
 
         healthList.appendChild(item);
     }
 }
-
-// Clean up stale displays every 5 seconds
-setInterval(() => {
-    if (connectedDisplays.size > 0) {
-        updateDisplayHealth();
-    }
-}, 5000);
-
-// Logout function
-function logout() {
-    stopScreenShare();
-    if (websocket) {
-        websocket.close();
-    }
-    clearAuthToken();
-    window.location.href = '/';
-}
-
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
-    stopScreenShare();
-    if (websocket) {
-        websocket.close();
-    }
-});
 </script>
 {% endblock %}

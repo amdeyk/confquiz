@@ -1,3 +1,5 @@
+import os
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
@@ -31,6 +33,21 @@ class Settings(BaseSettings):
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     admin_password: str = Field(default="changeme", alias="ADMIN_PASSWORD")
 
+    # LiveKit (SFU)
+    livekit_url: str = Field(default="wss://livekit.example.com", alias="LIVEKIT_URL")
+    livekit_api_key: str = Field(default="", alias="LIVEKIT_API_KEY")
+    livekit_api_secret: str = Field(default="", alias="LIVEKIT_API_SECRET")
+    livekit_token_ttl_seconds: int = Field(default=3600, alias="LIVEKIT_TOKEN_TTL_SECONDS")
+    livekit_room_prefix: str = Field(default="quiz", alias="LIVEKIT_ROOM_PREFIX")
+
+    # Bandwidth monitoring (VPS)
+    bandwidth_monitor_enabled: bool = Field(default=True, alias="BANDWIDTH_MONITOR_ENABLED")
+    bandwidth_interface: str = Field(default="eth0", alias="BANDWIDTH_INTERFACE")
+    bandwidth_sample_interval_seconds: int = Field(default=60, alias="BANDWIDTH_SAMPLE_INTERVAL_SECONDS")
+    bandwidth_budget_gb: int = Field(default=200, alias="BANDWIDTH_BUDGET_GB")
+    bandwidth_warn_gb: int = Field(default=160, alias="BANDWIDTH_WARN_GB")
+    bandwidth_critical_gb: int = Field(default=180, alias="BANDWIDTH_CRITICAL_GB")
+
     # Conference/Event Details (must be set in .env)
     conference_name: str = Field(alias="CONFERENCE_NAME")
     conference_full_name: str = Field(default="", alias="CONFERENCE_FULL_NAME")
@@ -41,7 +58,7 @@ class Settings(BaseSettings):
     conference_scientific_chair: str = Field(default="", alias="CONFERENCE_SCIENTIFIC_CHAIR")
 
     class Config:
-        env_file = ".env"
+        env_file = os.getenv("ENV_FILE", ".env")
         case_sensitive = False
 
 

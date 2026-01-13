@@ -102,7 +102,7 @@ If not set, these fields won't be displayed (graceful degradation).
 
 ### 1. **Settings are Loaded**
 
-`config.py` reads from `.env`:
+`config.py` reads from `.env` by default. To override, set `ENV_FILE` (for example `ENV_FILE=.env.prod` or `ENV_FILE=.env2` for this update).
 ```python
 from config import settings
 

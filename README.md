@@ -143,7 +143,7 @@ Once the server is running, access the interactive API documentation:
 
 ## Configuration
 
-Edit `.env` file to customize:
+Edit `.env` file to customize (or set `ENV_FILE` to use another file, such as `.env2` for this update):
 
 ```env
 # Server Settings

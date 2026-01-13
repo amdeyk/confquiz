@@ -18,7 +18,7 @@
                 <div class="no-slide">No slide loaded</div>
             </div>
 
-            <!-- WebRTC Screen Share Video -->
+            <!-- Screen Share Video -->
             <video id="screenShareVideo" class="screen-share-video" autoplay playsinline muted></video>
         </div>
 
@@ -312,11 +312,18 @@
     }
 </style>
 
+<script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
 <script>
 let ws = null;
 let sessionId = null;
-let peerConnection = null;
 let displayMode = 'png_slides'; // Default mode
+let livekitRoom = null;
+let livekitTrack = null;
+let displayRole = 'normal';
+let lastInboundBytes = null;
+let lastInboundTimestamp = null;
+let pendingLivekitToken = null;
+let pendingLivekitUrl = null;
 const displayId = 'display_' + Math.random().toString(36).substr(2, 9);
 
 async function loadDisplayMode() {
@@ -332,176 +339,154 @@ async function loadDisplayMode() {
     }
 }
 
-async function setupWebRTC(offer, presenterId) {
-    try {
-        console.log('[WebRTC] Setting up WebRTC connection...');
+function normalizeStats(reports) {
+    const all = [];
+    if (!reports) {
+        return all;
+    }
+    const reportList = Array.isArray(reports) ? reports : [reports];
+    for (const report of reportList) {
+        if (!report) {
+            continue;
+        }
+        report.forEach(stat => all.push(stat));
+    }
+    return all;
+}
 
-        // Close existing connection
-        if (peerConnection) {
-            peerConnection.close();
+async function connectLiveKit(token, url) {
+    try {
+        if (livekitRoom) {
+            await livekitRoom.disconnect();
+            livekitRoom = null;
         }
 
-        // Create new peer connection
-        peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }
-            ]
+        livekitRoom = new livekit.Room({
+            adaptiveStream: false,
+            dynacast: false
         });
 
-        // Monitor connection state
-        peerConnection.onconnectionstatechange = () => {
-            console.log('[WebRTC] Connection state:', peerConnection.connectionState);
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-            console.log('[WebRTC] ICE connection state:', peerConnection.iceConnectionState);
-        };
-
-        // Handle incoming stream
-        peerConnection.ontrack = (event) => {
-            console.log('[WebRTC] Received remote stream!');
-            console.log('[WebRTC] Stream:', event.streams[0]);
-            console.log('[WebRTC] Tracks:', event.streams[0].getTracks());
-            console.log('[WebRTC] Track count:', event.streams[0].getTracks().length);
-
-            const video = document.getElementById('screenShareVideo');
-            if (!video) {
-                console.error('[WebRTC] Video element not found!');
-                return;
+        livekitRoom.on('trackSubscribed', (track) => {
+            if (track.kind === 'video') {
+                attachLiveKitTrack(track);
             }
+        });
 
-            console.log('[WebRTC] Setting srcObject...');
-            video.srcObject = event.streams[0];
+        livekitRoom.on('trackUnsubscribed', () => {
+            stopLiveKit();
+        });
 
-            // Video will autoplay since it has autoplay and muted attributes
-            console.log('[WebRTC] Video srcObject set, autoplay will handle playback');
-
-            // Switch to video mode
-            console.log('[WebRTC] Hiding slide container...');
-            const slideContainer = document.getElementById('slideContainer');
-            slideContainer.classList.add('hidden');
-            console.log('[WebRTC] Slide container hidden:', slideContainer.classList.contains('hidden'));
-
-            console.log('[WebRTC] Adding active class to video...');
-            video.classList.add('active');
-            console.log('[WebRTC] Video has active class:', video.classList.contains('active'));
-            console.log('[WebRTC] Video display style:', window.getComputedStyle(video).display);
-
-            console.log('[WebRTC] Video element updated successfully!');
-
-            // Send acknowledgment that video is playing
-            sendDisplayStatus('video-playing');
-
-            // Monitor video playback and send periodic health checks
-            video.onplaying = () => {
-                console.log('[WebRTC] Video started playing');
-                sendDisplayStatus('video-active');
-            };
-
-            video.onerror = (error) => {
-                console.error('[WebRTC] Video error:', error);
-                sendDisplayStatus('video-error');
-            };
-
-            // Send periodic health status every 5 seconds
-            if (window.displayHealthInterval) {
-                clearInterval(window.displayHealthInterval);
-            }
-            window.displayHealthInterval = setInterval(() => {
-                if (video.srcObject && !video.paused) {
-                    const track = event.streams[0].getVideoTracks()[0];
-                    if (track) {
-                        const settings = track.getSettings();
-                        sendDisplayStatus('video-healthy', {
-                            resolution: `${settings.width}x${settings.height}`,
-                            frameRate: settings.frameRate
-                        });
-                    }
-                }
-            }, 5000);
-        };
-
-        // Handle ICE candidates
-        peerConnection.onicecandidate = (event) => {
-            if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'ice-candidate',
-                    candidate: event.candidate,
-                    display_id: displayId
-                }));
-            }
-        };
-
-        // Set remote description (offer from presenter)
-        console.log('[WebRTC] Setting remote description (offer)...');
-        await peerConnection.setRemoteDescription(new RTCSessionDescription({
-            type: 'offer',
-            sdp: offer
-        }));
-
-        // Create and send answer
-        console.log('[WebRTC] Creating answer...');
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-
-        console.log('[WebRTC] Sending answer back to presenter...');
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'answer',
-                sdp: answer.sdp,
-                display_id: displayId
-            }));
-            console.log('[WebRTC] Answer sent!');
-        } else {
-            console.error('[WebRTC] WebSocket not open, cannot send answer');
-        }
-
+        await livekitRoom.connect(url, token, { autoSubscribe: true });
     } catch (error) {
-        console.error('[WebRTC] Setup failed:', error);
+        console.error('[LiveKit] Connection failed:', error);
         showAlert('Screen sharing connection failed', 'error');
     }
 }
 
-function sendDisplayStatus(status, data = {}) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-            ws.send(JSON.stringify({
-                type: 'display-status',
-                status: status,
-                display_id: displayId,
-                ...data
-            }));
-            console.log('[WebRTC] Sent display status:', status);
-        } catch (error) {
-            console.error('[WebRTC] Failed to send display status:', error);
-        }
+function attachLiveKitTrack(track) {
+    livekitTrack = track;
+    const video = document.getElementById('screenShareVideo');
+    if (!video) {
+        console.error('[LiveKit] Video element not found!');
+        return;
     }
+
+    video.srcObject = new MediaStream([track.mediaStreamTrack]);
+    video.classList.add('active');
+
+    const slideContainer = document.getElementById('slideContainer');
+    slideContainer.classList.add('hidden');
+
+    if (window.displayTelemetryInterval) {
+        clearInterval(window.displayTelemetryInterval);
+    }
+    window.displayTelemetryInterval = setInterval(() => {
+        sendDisplayTelemetry();
+    }, 5000);
+    sendDisplayTelemetry();
 }
 
-function stopWebRTC() {
-    // Clear health check interval
-    if (window.displayHealthInterval) {
-        clearInterval(window.displayHealthInterval);
-        window.displayHealthInterval = null;
+async function sendDisplayTelemetry() {
+    if (!ws || ws.readyState !== WebSocket.OPEN || !livekitRoom || !livekitTrack) {
+        return;
     }
 
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
+    const stats = normalizeStats(await livekitRoom.getStats());
+    const inbound = stats.find(stat =>
+        stat.type === 'inbound-rtp' &&
+        (stat.kind === 'video' || stat.mediaType === 'video')
+    );
+
+    let bitrate = null;
+    let packetLoss = null;
+    let jitter = null;
+
+    if (inbound) {
+        const now = Date.now();
+        if (inbound.bytesReceived != null) {
+            if (lastInboundBytes != null && lastInboundTimestamp != null) {
+                const bytesDelta = inbound.bytesReceived - lastInboundBytes;
+                const timeDelta = (now - lastInboundTimestamp) / 1000;
+                if (timeDelta > 0) {
+                    bitrate = (bytesDelta * 8) / timeDelta;
+                }
+            }
+            lastInboundBytes = inbound.bytesReceived;
+            lastInboundTimestamp = now;
+        }
+
+        if (inbound.packetsLost != null && inbound.packetsReceived != null) {
+            const total = inbound.packetsLost + inbound.packetsReceived;
+            if (total > 0) {
+                packetLoss = inbound.packetsLost / total;
+            }
+        }
+
+        if (inbound.jitter != null) {
+            jitter = inbound.jitter;
+        }
     }
+
+    const settings = livekitTrack.mediaStreamTrack.getSettings();
+    ws.send(JSON.stringify({
+        type: 'display-telemetry',
+        display_id: displayId,
+        role: displayRole,
+        resolution: `${settings.width}x${settings.height}`,
+        frameRate: settings.frameRate,
+        bitrate: bitrate,
+        packetLoss: packetLoss,
+        jitter: jitter
+    }));
+}
+
+function stopLiveKit() {
+    if (window.displayTelemetryInterval) {
+        clearInterval(window.displayTelemetryInterval);
+        window.displayTelemetryInterval = null;
+    }
+
+    if (livekitRoom) {
+        livekitRoom.disconnect();
+        livekitRoom = null;
+    }
+
+    livekitTrack = null;
+    lastInboundBytes = null;
+    lastInboundTimestamp = null;
 
     const video = document.getElementById('screenShareVideo');
     video.srcObject = null;
     video.classList.remove('active');
 
-    // Switch back to PNG slides
     document.getElementById('slideContainer').classList.remove('hidden');
-
-    // Notify presenter that video stopped
-    sendDisplayStatus('video-stopped');
 }
 
 async function init() {
+    if (!window.livekit) {
+        showAlert('LiveKit client failed to load. Check network access.', 'error');
+        return;
+    }
     // Load display mode setting
     await loadDisplayMode();
     // Get session ID from URL or default to 1
@@ -594,13 +579,13 @@ function connectWebSocket() {
     ws.onopen = () => {
         console.log('WebSocket connected');
 
-        // Notify presenter that display is ready (in case screen sharing is already active)
         if (displayMode === 'screen_share') {
             ws.send(JSON.stringify({
-                type: 'display-ready',
-                display_id: displayId
+                type: 'display-join',
+                display_id: displayId,
+                user_agent: navigator.userAgent
             }));
-            console.log('[WebRTC] Sent display-ready message');
+            console.log('[LiveKit] Sent display-join message');
         }
     };
 
@@ -648,28 +633,23 @@ function connectWebSocket() {
                     updateBuzzerQueue([]);
                     break;
 
-                case 'webrtc.offer':
-                    // Presenter is offering screen share
-                    console.log('[WebRTC] Received offer, displayMode:', displayMode);
+                case 'display.approved':
+                    displayRole = data.role || 'normal';
+                    pendingLivekitToken = data.token;
+                    pendingLivekitUrl = data.livekit_url;
                     if (displayMode === 'screen_share') {
-                        console.log('[WebRTC] Calling setupWebRTC...');
-                        setupWebRTC(data.sdp, data.presenter_id);
-                    } else {
-                        console.log('[WebRTC] Ignoring offer because displayMode is not screen_share');
+                        connectLiveKit(pendingLivekitToken, pendingLivekitUrl);
                     }
                     break;
 
-                case 'webrtc.ice':
-                    // Received ICE candidate from presenter
-                    if (peerConnection && data.candidate) {
-                        peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-                    }
+                case 'display.error':
+                    showAlert(data.message || 'Display approval failed', 'error');
                     break;
 
                 case 'presenter.stopped':
                 case 'presenter.disconnected':
                     // Presenter stopped sharing
-                    stopWebRTC();
+                    stopLiveKit();
                     break;
 
                 case 'settings.update':
@@ -677,7 +657,18 @@ function connectWebSocket() {
                     if (data.setting_key === 'display_mode') {
                         displayMode = data.setting_value;
                         if (displayMode === 'png_slides') {
-                            stopWebRTC();
+                            stopLiveKit();
+                        } else if (displayMode === 'screen_share') {
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'display-join',
+                                    display_id: displayId,
+                                    user_agent: navigator.userAgent
+                                }));
+                            }
+                            if (pendingLivekitToken && pendingLivekitUrl) {
+                                connectLiveKit(pendingLivekitToken, pendingLivekitUrl);
+                            }
                         }
                     }
                     break;

@@ -4,13 +4,33 @@ from sqlalchemy import select
 from typing import List
 
 from database import get_db
-from auth import get_current_admin, get_current_quiz_master, get_current_user, get_password_hash
+from auth import (
+    get_current_admin,
+    get_current_quiz_master,
+    get_current_presenter,
+    get_current_user,
+    get_password_hash
+)
 from models import User, Team, Session, Round, TeamSession, Score, AdminSettings
 from schemas import (
-    TeamCreate, TeamResponse, SessionCreate, SessionResponse,
-    RoundCreate, RoundResponse, SessionUpdate, TeamUpdate, UserLogin
+    BandwidthStatusResponse,
+    DisplayApprovalRequest,
+    PresenterLiveKitTokenRequest,
+    TeamCreate,
+    TeamResponse,
+    SessionCreate,
+    SessionResponse,
+    RoundCreate,
+    RoundResponse,
+    SessionUpdate,
+    TeamUpdate,
+    UserLogin
 )
 from config import settings
+from services.bandwidth_monitor import get_bandwidth_status
+from services.display_registry import approve_display, count_protected, list_displays
+from services.livekit_tokens import create_livekit_token
+from routers.ws_router import manager
 
 router = APIRouter()
 
@@ -356,6 +376,112 @@ async def get_presenter_sessions(
         }
         for s in sessions
     ]
+
+
+@router.post("/presenter/livekit-token")
+async def create_presenter_livekit_token(
+    payload: PresenterLiveKitTokenRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_presenter)
+):
+    """Create a LiveKit token for the presenter after protected displays are approved"""
+    result = await db.execute(select(Session).where(Session.id == payload.session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    protected_count = await count_protected(payload.session_id)
+    if protected_count < 2:
+        raise HTTPException(status_code=400, detail="At least 2 protected displays must be approved before presenting")
+
+    room_name = f"{settings.livekit_room_prefix}-{payload.session_id}"
+    try:
+        token = create_livekit_token(
+            identity=f"presenter_{current_user.id}",
+            room=room_name,
+            name=current_user.username,
+            can_publish=True,
+            can_subscribe=False,
+            metadata={"role": "presenter", "session_id": payload.session_id, "user_id": current_user.id}
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+    return {
+        "token": token,
+        "livekit_url": settings.livekit_url,
+        "room_name": room_name,
+        "protected_count": protected_count
+    }
+
+
+# ============ LiveKit Display Approval ============
+
+@router.get("/livekit/displays")
+async def get_livekit_displays(
+    session_id: int,
+    current_user: User = Depends(get_current_admin)
+):
+    """List pending/approved displays for a session"""
+    return {"displays": await list_displays(session_id)}
+
+
+@router.post("/livekit/displays/{display_id}/approve")
+async def approve_livekit_display(
+    display_id: str,
+    payload: DisplayApprovalRequest,
+    current_user: User = Depends(get_current_admin)
+):
+    """Approve a display and issue LiveKit token"""
+    role = payload.role.lower()
+    if role not in ["protected", "normal"]:
+        raise HTTPException(status_code=400, detail="Role must be 'protected' or 'normal'")
+
+    registry = await approve_display(payload.session_id, display_id, role, current_user.username)
+    room_name = f"{settings.livekit_room_prefix}-{payload.session_id}"
+    try:
+        token = create_livekit_token(
+            identity=display_id,
+            room=room_name,
+            can_publish=False,
+            can_subscribe=True,
+            metadata={"role": role, "display_id": display_id, "session_id": payload.session_id}
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+
+    await manager.send_to_display(display_id, {
+        "event": "display.approved",
+        "display_id": display_id,
+        "role": role,
+        "token": token,
+        "livekit_url": settings.livekit_url,
+        "room_name": room_name
+    })
+
+    await manager.broadcast_to_session(
+        payload.session_id,
+        {
+            "event": "display.approved",
+            "display_id": display_id,
+            "role": role
+        },
+        role="admin"
+    )
+
+    return {"display": registry}
+
+
+# ============ Bandwidth Monitoring ============
+
+@router.get("/bandwidth/status", response_model=BandwidthStatusResponse)
+async def get_bandwidth_status_admin(
+    current_user: User = Depends(get_current_user)
+):
+    """Get current bandwidth usage (admin or presenter)"""
+    if current_user.role not in ["admin", "presenter"]:
+        raise HTTPException(status_code=403, detail="Admin or presenter access required")
+    return await get_bandwidth_status()
 
 
 # ============ Admin Settings Management ============
