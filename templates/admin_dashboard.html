@@ -1226,12 +1226,12 @@ function renderDisplayTable() {
                 ? 'role-badge role-normal'
                 : 'role-badge role-pending';
 
-        const actions = !display.role
-            ? `
-                <button class="btn btn-success btn-approve" onclick="approveDisplay('${display.display_id}', 'protected')">Protect</button>
-                <button class="btn btn-secondary btn-approve" onclick="approveDisplay('${display.display_id}', 'normal')">Normal</button>
-            `
-            : '<span class="text-muted">Approved</span>';
+        const isProtected = role === 'protected';
+        const isNormal = role === 'normal';
+        const actions = `
+            <button class="btn btn-success btn-approve" onclick="approveDisplay('${display.display_id}', 'protected')" ${isProtected ? 'disabled' : ''}>Protect</button>
+            <button class="btn btn-secondary btn-approve" onclick="approveDisplay('${display.display_id}', 'normal')" ${isNormal ? 'disabled' : ''}>Normal</button>
+        `;
 
         const row = document.createElement('tr');
         row.innerHTML = `

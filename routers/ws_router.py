@@ -433,50 +433,51 @@ async def websocket_display(websocket: WebSocket, session_id: int):
 
                 existing = await get_display(session_id, display_id)
                 role = existing.get("role") if existing else None
-                status = "approved" if role else "pending"
+                if not role:
+                    role = "normal"
 
-                await upsert_display(
+                registry = await upsert_display(
                     session_id,
                     display_id,
                     {
-                        "status": status,
+                        "status": "approved",
                         "role": role,
                         "user_agent": user_agent
                     }
                 )
 
-                if role:
-                    try:
-                        room_name = f"{settings.livekit_room_prefix}-{session_id}"
-                        token = create_livekit_token(
-                            identity=display_id,
-                            room=room_name,
-                            can_publish=False,
-                            can_subscribe=True,
-                            metadata={"role": role, "display_id": display_id, "session_id": session_id}
-                        )
-                        await manager.send_to_display(display_id, {
-                            "event": "display.approved",
-                            "display_id": display_id,
-                            "role": role,
-                            "token": token,
-                            "livekit_url": settings.livekit_url,
-                            "room_name": room_name
-                        })
-                    except ValueError as error:
-                        await manager.send_to_display(display_id, {
-                            "event": "display.error",
-                            "message": str(error)
-                        })
-                else:
+                try:
+                    room_name = f"{settings.livekit_room_prefix}-{session_id}"
+                    token = create_livekit_token(
+                        identity=display_id,
+                        room=room_name,
+                        can_publish=False,
+                        can_subscribe=True,
+                        metadata={"role": role, "display_id": display_id, "session_id": session_id}
+                    )
+                    await manager.send_to_display(display_id, {
+                        "event": "display.approved",
+                        "display_id": display_id,
+                        "role": role,
+                        "token": token,
+                        "livekit_url": settings.livekit_url,
+                        "room_name": room_name
+                    })
                     await manager.broadcast_to_session(
                         session_id,
                         {
-                            "event": "display.pending",
-                            "display_id": display_id
+                            "event": "display.approved",
+                            "display_id": display_id,
+                            "role": role,
+                            "status": registry.get("status")
                         },
                         role="admin"
                     )
+                except ValueError as error:
+                    await manager.send_to_display(display_id, {
+                        "event": "display.error",
+                        "message": str(error)
+                    })
 
             # Handle display telemetry updates (health checks)
             elif message.get("type") in ["display-telemetry", "display-status"]:
@@ -781,6 +782,20 @@ async def websocket_presenter(websocket: WebSocket, session_id: int, token: str 
                         "bandwidth_locked": message.get("bandwidth_locked")
                     },
                     role="admin"
+                )
+                # Presenter heartbeat for displays (independent of buzzer/score heartbeats)
+                await manager.broadcast_to_session(
+                    session_id,
+                    {
+                        "event": "presenter.heartbeat",
+                        "presenter_id": message.get("presenter_id"),
+                        "is_presenting": message.get("is_presenting"),
+                        "webrtc_state": message.get("webrtc_state"),
+                        "frame_rate": message.get("frame_rate"),
+                        "resolution": message.get("resolution"),
+                        "bitrate": message.get("bitrate")
+                    },
+                    role="display"
                 )
 
     except WebSocketDisconnect:

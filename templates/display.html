@@ -320,7 +320,8 @@ let sessionId = null;
 let displayMode = 'png_slides'; // Default mode
 let livekitRoom = null;
 let livekitTrack = null;
-let displayRole = 'normal';
+  let displayRole = 'normal';
+  let lastJoinRequest = 0;
 let lastInboundBytes = null;
 let lastInboundTimestamp = null;
 let pendingLivekitToken = null;
@@ -353,6 +354,34 @@ function normalizeStats(reports) {
         report.forEach(stat => all.push(stat));
     }
     return all;
+}
+
+function sendDisplayJoin(force = false) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        return;
+    }
+    const now = Date.now();
+    if (!force && now - lastJoinRequest < 10000) {
+        return;
+    }
+    lastJoinRequest = now;
+    ws.send(JSON.stringify({
+        type: 'display-join',
+        display_id: displayId,
+        user_agent: navigator.userAgent
+    }));
+    console.log('[LiveKit] Sent display-join message');
+}
+
+function attemptLiveKitConnect() {
+    if (!pendingLivekitToken || !pendingLivekitUrl) {
+        return false;
+    }
+    if (livekitRoom && livekitRoom.state && livekitRoom.state !== 'disconnected') {
+        return true;
+    }
+    connectLiveKit(pendingLivekitToken, pendingLivekitUrl);
+    return true;
 }
 
 async function connectLiveKit(token, url) {
@@ -577,18 +606,13 @@ function connectWebSocket() {
 
     ws = new WebSocket(wsUrl);
 
-    ws.onopen = () => {
-        console.log('WebSocket connected');
+      ws.onopen = () => {
+          console.log('WebSocket connected');
 
-        if (displayMode === 'screen_share') {
-            ws.send(JSON.stringify({
-                type: 'display-join',
-                display_id: displayId,
-                user_agent: navigator.userAgent
-            }));
-            console.log('[LiveKit] Sent display-join message');
-        }
-    };
+          if (displayMode === 'screen_share') {
+              sendDisplayJoin(true);
+          }
+      };
 
     ws.onmessage = (event) => {
         try {
@@ -634,14 +658,28 @@ function connectWebSocket() {
                     updateBuzzerQueue([]);
                     break;
 
-                case 'display.approved':
-                    displayRole = data.role || 'normal';
-                    pendingLivekitToken = data.token;
-                    pendingLivekitUrl = data.livekit_url;
-                    if (displayMode === 'screen_share') {
-                        connectLiveKit(pendingLivekitToken, pendingLivekitUrl);
-                    }
-                    break;
+                  case 'display.approved':
+                      displayRole = data.role || 'normal';
+                      pendingLivekitToken = data.token;
+                      pendingLivekitUrl = data.livekit_url;
+                      if (displayMode === 'screen_share') {
+                          attemptLiveKitConnect();
+                      }
+                      break;
+                  case 'presenter.started':
+                      if (displayMode === 'screen_share') {
+                          if (!attemptLiveKitConnect()) {
+                              sendDisplayJoin();
+                          }
+                      }
+                      break;
+                  case 'presenter.heartbeat':
+                      if (displayMode === 'screen_share') {
+                          if (!attemptLiveKitConnect()) {
+                              sendDisplayJoin();
+                          }
+                      }
+                      break;
 
                 case 'display.error':
                     showAlert(data.message || 'Display approval failed', 'error');
@@ -660,18 +698,10 @@ function connectWebSocket() {
                         if (displayMode === 'png_slides') {
                             stopLiveKit();
                         } else if (displayMode === 'screen_share') {
-                            if (ws && ws.readyState === WebSocket.OPEN) {
-                                ws.send(JSON.stringify({
-                                    type: 'display-join',
-                                    display_id: displayId,
-                                    user_agent: navigator.userAgent
-                                }));
-                            }
-                            if (pendingLivekitToken && pendingLivekitUrl) {
-                                connectLiveKit(pendingLivekitToken, pendingLivekitUrl);
-                            }
-                        }
-                    }
+                              sendDisplayJoin(true);
+                              attemptLiveKitConnect();
+                          }
+                      }
                     break;
             }
         } catch (error) {

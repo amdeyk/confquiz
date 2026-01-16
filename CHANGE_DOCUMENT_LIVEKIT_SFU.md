@@ -12,6 +12,8 @@ This upgrade replaces peer-to-peer screen sharing with LiveKit SFU fan-out, adds
 - Presenter UI warns when fewer than 2 protected displays are approved.
 - Quality guard treats zero protected displays as healthy (normal displays drive adaptation).
 - LiveKit credential error now indicates required variables.
+- Displays auto-approve as `normal` on join; admin can still promote to `protected`.
+- Presenter heartbeat is broadcast to displays for faster reconnects.
 
 ## Architecture Changes
 
