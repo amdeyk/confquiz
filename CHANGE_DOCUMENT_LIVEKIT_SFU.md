@@ -6,6 +6,13 @@ Date: 2026-01-13
 
 This upgrade replaces peer-to-peer screen sharing with LiveKit SFU fan-out, adds admin approval for protected/normal displays, enforces protected-display floors at the presenter, and introduces VPS bandwidth accounting with dashboard visibility.
 
+## Update: 2026-01-16
+
+- Protected display approvals are recommended, not required, before presenting.
+- Presenter UI warns when fewer than 2 protected displays are approved.
+- Quality guard treats zero protected displays as healthy (normal displays drive adaptation).
+- LiveKit credential error now indicates required variables.
+
 ## Architecture Changes
 
 - Presenter publishes a single VP9 screen track to LiveKit.

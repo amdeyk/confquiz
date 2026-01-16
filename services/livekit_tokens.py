@@ -18,7 +18,7 @@ def create_livekit_token(
     metadata: Optional[Dict] = None
 ) -> str:
     if not settings.livekit_api_key or not settings.livekit_api_secret:
-        raise ValueError("LiveKit credentials are not configured")
+        raise ValueError("LiveKit credentials are not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET.")
 
     exp = int(time.time()) + settings.livekit_token_ttl_seconds
     grant = {

@@ -1197,7 +1197,7 @@ function renderDisplayTable() {
     const approvalStatus = document.getElementById('displayApprovalStatus');
     if (protectedCount < 2) {
         approvalStatus.style.display = 'block';
-        approvalStatus.textContent = `Protected displays required: ${protectedCount}/2 approved`;
+        approvalStatus.textContent = `Protected displays recommended: ${protectedCount}/2 approved`;
     } else {
         approvalStatus.style.display = 'none';
     }

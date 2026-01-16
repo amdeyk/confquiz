@@ -384,15 +384,13 @@ async def create_presenter_livekit_token(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_presenter)
 ):
-    """Create a LiveKit token for the presenter after protected displays are approved"""
+    """Create a LiveKit token for the presenter"""
     result = await db.execute(select(Session).where(Session.id == payload.session_id))
     session = result.scalar_one_or_none()
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
     protected_count = await count_protected(payload.session_id)
-    if protected_count < 2:
-        raise HTTPException(status_code=400, detail="At least 2 protected displays must be approved before presenting")
 
     room_name = f"{settings.livekit_room_prefix}-{payload.session_id}"
     try:

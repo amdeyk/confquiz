@@ -28,7 +28,7 @@
             <div class="step">2️⃣ Open your PowerPoint presentation in full-screen mode</div>
             <div class="step">3️⃣ Click "Start Screen Sharing" and select the presentation window</div>
             <div class="step">4️⃣ Navigate slides using PowerPoint controls - they'll appear on the main display!</div>
-            <div class="step">⚠️ Ensure at least 2 protected displays are approved before starting</div>
+            <div class="step">⚠️ Protected displays are recommended for best clarity (not required)</div>
             <div class="step">💡 <strong>Tip:</strong> Use 10 FPS (recommended) or 15 FPS for maximum clarity</div>
         </div>
     </div>
@@ -501,6 +501,9 @@ async function fetchLiveKitToken() {
 
 async function setupLiveKit() {
     const tokenResponse = await fetchLiveKitToken();
+    if (Number.isFinite(tokenResponse.protected_count) && tokenResponse.protected_count < 2) {
+        showAlert(`Protected displays recommended: ${tokenResponse.protected_count}/2 approved`, 'warning');
+    }
     const room = new livekit.Room({
         adaptiveStream: false,
         dynacast: false,
@@ -601,7 +604,7 @@ function getDisplayGroups() {
 
 function protectedDisplaysHealthy(protectedDisplays) {
     if (protectedDisplays.length === 0) {
-        return false;
+        return true;
     }
     return protectedDisplays.every(display =>
         (display.bitrate || 0) >= PROTECTED_MIN.maxBitrate &&
