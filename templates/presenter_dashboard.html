@@ -328,6 +328,7 @@ window.addEventListener('load', () => {
         document.getElementById('startSharingBtn').disabled = true;
     }
     loadSessions();
+    refreshBandwidthStatus();
 });
 
 // Load sessions
@@ -761,8 +762,6 @@ setInterval(() => {
 setInterval(() => {
     refreshBandwidthStatus();
 }, 60000);
-
-refreshBandwidthStatus();
 
 // Update display health status UI
 function updateDisplayHealth() {
