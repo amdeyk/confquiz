@@ -280,9 +280,10 @@
     }
 </style>
 
-<script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
+<script src="/static/js/livekit-client.min.js"></script>
 <script>
-let websocket = null;
+  window.livekit = window.livekit || window.LiveKitClient || window.LiveKit;
+  let websocket = null;
 let livekitRoom = null;
 let screenTrack = null;
 let screenSender = null;

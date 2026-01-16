@@ -68,7 +68,7 @@ Added to `.env.example`:
 - `templates/presenter_dashboard.html` now uses LiveKit client.
 - `templates/display.html` subscribes via LiveKit after approval.
 - `templates/admin_dashboard.html` adds display approval + LiveKit monitoring UI.
-- LiveKit client is loaded via CDN (`unpkg.com`).
+- LiveKit client is self-hosted at `/static/js/livekit-client.min.js` (UMD bundle).
 
 ## Redis Keys
 

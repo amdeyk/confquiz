@@ -312,9 +312,10 @@
     }
 </style>
 
-<script src="https://unpkg.com/livekit-client/dist/livekit-client.min.js"></script>
+<script src="/static/js/livekit-client.min.js"></script>
 <script>
-let ws = null;
+  window.livekit = window.livekit || window.LiveKitClient || window.LiveKit;
+  let ws = null;
 let sessionId = null;
 let displayMode = 'png_slides'; // Default mode
 let livekitRoom = null;

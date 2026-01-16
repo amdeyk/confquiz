@@ -74,6 +74,18 @@ LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
 ```
 
-## 6) Redis reliability
+## 6) LiveKit client JS (browser)
+
+Place the LiveKit UMD bundle at `/opt/apps/confquiz/static/js/livekit-client.min.js` so clients do not depend on CDN access.
+
+Example (VPS):
+
+```bash
+curl -L https://registry.npmjs.org/livekit-client/-/livekit-client-2.17.0.tgz -o /tmp/livekit-client.tgz
+tar -xzf /tmp/livekit-client.tgz -C /tmp
+sudo cp /tmp/package/dist/livekit-client.umd.js /opt/apps/confquiz/static/js/livekit-client.min.js
+```
+
+## 7) Redis reliability
 
 LiveKit and the app both depend on Redis. Ensure Redis is supervised and has adequate memory. On VPS: `systemctl status redis`.
