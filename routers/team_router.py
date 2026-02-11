@@ -63,20 +63,30 @@ async def buzz(
     """Team buzzes in (fallback HTTP endpoint)"""
     r = await get_redis()
 
-    # Check if buzzers are locked
+    # Enforce 1-second cooldown between accepted buzzes (auto-unlock)
     lock_key = f"buzzer:lock:{session_id}"
-    if await r.exists(lock_key):
-        raise HTTPException(status_code=400, detail="Buzzers are locked")
 
     # Add to sorted set with timestamp as score
     buzzer_key = f"buzzer:{session_id}"
     timestamp = datetime.utcnow().timestamp()
     member = f"{current_team.id}:{device_id}"
 
+    # Reject if team already buzzed
+    if await r.zscore(buzzer_key, member) is not None:
+        return {"message": "Already buzzed", "placement": None}
+
+    lock_acquired = await r.set(lock_key, "1", nx=True, ex=1)
+    if not lock_acquired:
+        ttl = await r.ttl(lock_key)
+        if ttl is None or ttl < 0:
+            await r.expire(lock_key, 1)
+        raise HTTPException(status_code=400, detail="Buzzer cooling down")
+
     # Use ZADD NX to only add if not exists
     added = await r.zadd(buzzer_key, {member: timestamp}, nx=True)
 
     if not added:
+        await r.delete(lock_key)
         return {"message": "Already buzzed", "placement": None}
 
     # Get placement

@@ -9,33 +9,19 @@
         <button onclick="logout()" class="btn btn-danger btn-small">Logout</button>
     </div>
 
-    <!-- Help Instructions -->
-    <div class="help-banner">
-        <p>💡 <strong>How to Play:</strong> Watch the display screen for questions. When ready to answer, press the BUZZ button. Your placement in the queue will be shown below!</p>
+    <div class="round-display">
+        <button id="currentRoundButton" class="round-button" type="button" disabled>Round: --</button>
     </div>
 
-    <div class="score-display">
-        <h2>Your Score</h2>
-        <div id="teamScore" class="score-value">0</div>
+    <div class="status-panel">
+        <div id="buzzerStatus" class="buzzer-status">Buzzer Ready</div>
+        <div id="placementDisplay" class="placement-display"></div>
     </div>
-
-    <div class="timer-display">
-        <div id="timerDisplay" class="timer">--:--</div>
-    </div>
-
-    <div class="buzzer-container">
-        <button id="buzzerButton" class="buzzer-button" onclick="pressBuzzer()">
-            <span class="buzzer-text">BUZZ!</span>
-        </button>
-        <div id="buzzerStatus" class="buzzer-status"></div>
-    </div>
-
-    <div id="placementDisplay" class="placement-display"></div>
 </div>
 
 <style>
     .team-interface {
-        max-width: 600px;
+        max-width: 520px;
         margin: 0 auto;
         padding: 20px;
         text-align: center;
@@ -45,7 +31,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 30px;
+        margin-bottom: 20px;
         background: white;
         padding: 20px;
         border-radius: 10px;
@@ -62,106 +48,47 @@
         font-size: 0.9rem;
     }
 
-    .help-banner {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    .round-display {
+        margin-bottom: 25px;
+    }
+
+    .round-button {
+        width: 100%;
+        padding: 18px 20px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        border-radius: 10px;
+        border: none;
+        background: #2c3e50;
         color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        text-align: center;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        cursor: default;
     }
 
-    .help-banner p {
-        margin: 0;
-        line-height: 1.6;
+    .round-button:disabled {
+        opacity: 1;
     }
 
-    .help-banner strong {
-        color: #ffd700;
-    }
-
-    .score-display {
-        background: white;
-        padding: 30px;
-        border-radius: 10px;
-        margin-bottom: 30px;
-    }
-
-    .score-display h2 {
-        margin-bottom: 15px;
-        color: #2c3e50;
-    }
-
-    .score-value {
-        font-size: 4rem;
-        font-weight: bold;
-        color: #3498db;
-    }
-
-    .timer-display {
+    .status-panel {
         background: white;
         padding: 20px;
         border-radius: 10px;
-        margin-bottom: 30px;
-    }
-
-    .timer {
-        font-size: 3rem;
-        font-weight: bold;
-        color: #e74c3c;
-        font-family: 'Courier New', monospace;
-    }
-
-    .buzzer-container {
-        margin: 40px 0;
-    }
-
-    .buzzer-button {
-        width: 280px;
-        height: 280px;
-        border-radius: 50%;
-        background: radial-gradient(circle, #e74c3c 0%, #c0392b 100%);
-        border: 8px solid #922b21;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-        cursor: pointer;
-        transition: all 0.1s;
-        position: relative;
-    }
-
-    .buzzer-button:active {
-        transform: scale(0.95);
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    }
-
-    .buzzer-button:disabled {
-        background: #95a5a6;
-        border-color: #7f8c8d;
-        cursor: not-allowed;
-    }
-
-    .buzzer-text {
-        color: white;
-        font-size: 3rem;
-        font-weight: bold;
-        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
     }
 
     .buzzer-status {
-        margin-top: 20px;
-        font-size: 1.2rem;
-        min-height: 30px;
+        font-size: 1.1rem;
+        min-height: 28px;
+        color: #7f8c8d;
     }
 
     .placement-display {
-        background: white;
-        padding: 20px;
+        background: #f8f9fa;
+        padding: 16px;
         border-radius: 10px;
-        margin-top: 30px;
-        font-size: 1.5rem;
+        margin-top: 15px;
+        font-size: 1.2rem;
         font-weight: bold;
         color: #2c3e50;
-        min-height: 60px;
+        min-height: 50px;
     }
 
     .placement-1st {
@@ -174,42 +101,13 @@
         50% { transform: scale(1.05); }
     }
 
-    /* Mobile Optimization */
     @media (max-width: 768px) {
         .team-interface {
             padding: 10px;
         }
 
-        .buzzer-button {
-            width: 240px;
-            height: 240px;
-        }
-
-        .buzzer-text {
-            font-size: 2.5rem;
-        }
-
-        .score-value {
-            font-size: 3rem;
-        }
-    }
-
-    /* Landscape mode for mobile */
-    @media (max-height: 600px) and (orientation: landscape) {
-        .score-display,
-        .timer-display {
-            display: inline-block;
-            width: 45%;
-            margin: 0 2%;
-        }
-
-        .buzzer-button {
-            width: 180px;
-            height: 180px;
-        }
-
-        .buzzer-text {
-            font-size: 2rem;
+        .round-button {
+            font-size: 1.05rem;
         }
     }
 </style>
@@ -219,23 +117,43 @@ let ws = null;
 let sessionId = null;
 let teamId = null;
 let deviceId = null;
+let buzzerLocked = false;
+let teamInQueue = false;
+let buzzPending = false;
+let buzzPendingAt = null;
 
 async function init() {
     try {
-        // Get current session
         const data = await apiRequest('/team/sessions/current');
         sessionId = data.session_id;
         teamId = data.team_id;
         document.getElementById('teamName').textContent = data.team_name;
-        document.getElementById('teamScore').textContent = data.score;
 
-        // Generate device ID
         deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
 
-        // Connect to WebSocket
+        await loadCurrentRound();
         connectWebSocket();
+        window.addEventListener('keydown', handleKeydown);
     } catch (error) {
         showAlert('Error loading session: ' + error.message, 'error');
+    }
+}
+
+async function loadCurrentRound() {
+    const roundButton = document.getElementById('currentRoundButton');
+    if (!roundButton || !sessionId) {
+        return;
+    }
+
+    try {
+        const snapshot = await apiRequest(`/display/sessions/${sessionId}/snapshot`);
+        if (snapshot && snapshot.current_round && snapshot.current_round.name) {
+            roundButton.textContent = `Round: ${snapshot.current_round.name}`;
+        } else {
+            roundButton.textContent = 'Round: --';
+        }
+    } catch (error) {
+        roundButton.textContent = 'Round: --';
     }
 }
 
@@ -246,107 +164,72 @@ function connectWebSocket() {
         console.log('WebSocket connected');
     });
 
-    ws.on('timer.tick', (data) => {
-        const timerDisplay = document.getElementById('timerDisplay');
-        timerDisplay.textContent = formatTime(data.remaining_ms);
-
-        // Enable buzzer when timer is running
-        const buzzerButton = document.getElementById('buzzerButton');
-        if (data.state === 'counting') {
-            buzzerButton.disabled = false;
-        } else {
-            buzzerButton.disabled = true;
-        }
-    });
-
-    ws.on('score.update', (data) => {
-        // Update score if it's for this team
-        document.getElementById('teamScore').textContent = data.total;
-    });
-
-    ws.on('score.status', (data) => {
-        // Heartbeat update with all team scores
-        if (data.scores && teamId) {
-            // Find this team's score
-            const teamScore = data.scores.find(s => s.team_id === teamId);
-            if (teamScore) {
-                document.getElementById('teamScore').textContent = teamScore.total;
-            }
-        }
-    });
-
     ws.on('buzzer.status', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
-        const buzzerButton = document.getElementById('buzzerButton');
         const placementDiv = document.getElementById('placementDisplay');
 
-        if (data.locked) {
-            statusDiv.textContent = 'Buzzer Locked';
-            statusDiv.style.color = '#e74c3c';
-            buzzerButton.disabled = true;
-        } else {
-            // Check if current team is in the queue
-            let teamInQueue = false;
-            let placement = null;
+        buzzerLocked = !!data.locked;
 
-            if (data.queue && data.queue.length > 0 && teamId) {
-                // Find this team in the queue
-                for (let i = 0; i < data.queue.length; i++) {
-                    if (data.queue[i].team_id === teamId) {
-                        teamInQueue = true;
-                        placement = i + 1;
-                        break;
-                    }
+        teamInQueue = false;
+        let placement = null;
+
+        if (data.queue && data.queue.length > 0 && teamId) {
+            for (let i = 0; i < data.queue.length; i++) {
+                if (data.queue[i].team_id === teamId) {
+                    teamInQueue = true;
+                    placement = i + 1;
+                    break;
                 }
-            }
-
-            if (teamInQueue) {
-                // Team is in queue, disable button and show placement
-                buzzerButton.disabled = true;
-                statusDiv.textContent = 'Buzzed!';
-                statusDiv.style.color = '#2ecc71';
-
-                const suffix = placement === 1 ? 'st' : placement === 2 ? 'nd' : placement === 3 ? 'rd' : 'th';
-                placementDiv.textContent = `You are ${placement}${suffix} (${data.total_buzzers} total)`;
-                placementDiv.className = 'placement-display';
-                if (placement === 1) {
-                    placementDiv.classList.add('placement-1st');
-                }
-            } else {
-                // Team not in queue, enable button if not locked
-                statusDiv.textContent = 'Ready';
-                statusDiv.style.color = '#2ecc71';
-                buzzerButton.disabled = false;
-                placementDiv.textContent = '';
-                placementDiv.className = 'placement-display';
             }
         }
-    });
 
-    ws.on('placement', (data) => {
-        const placementDiv = document.getElementById('placementDisplay');
-        if (data.placement) {
-            const suffix = data.placement === 1 ? 'st' : data.placement === 2 ? 'nd' : data.placement === 3 ? 'rd' : 'th';
-            placementDiv.textContent = `You buzzed ${data.placement}${suffix}!`;
+        if (buzzerLocked) {
+            statusDiv.textContent = 'Buzzer cooling down';
+            statusDiv.style.color = '#f39c12';
+            placementDiv.textContent = '';
             placementDiv.className = 'placement-display';
-            if (data.placement === 1) {
+            buzzPending = false;
+            buzzPendingAt = null;
+            return;
+        }
+
+        if (teamInQueue) {
+            statusDiv.textContent = 'Buzzed!';
+            statusDiv.style.color = '#2ecc71';
+            buzzPending = false;
+            buzzPendingAt = null;
+
+            const suffix = placement === 1 ? 'st' : placement === 2 ? 'nd' : placement === 3 ? 'rd' : 'th';
+            placementDiv.textContent = `You are ${placement}${suffix} (${data.total_buzzers} total)`;
+            placementDiv.className = 'placement-display';
+            if (placement === 1) {
                 placementDiv.classList.add('placement-1st');
             }
-        } else {
-            placementDiv.textContent = '';
+            return;
         }
+
+        if (buzzPending && buzzPendingAt && Date.now() - buzzPendingAt > 2000) {
+            buzzPending = false;
+            buzzPendingAt = null;
+        }
+
+        statusDiv.textContent = buzzPending ? 'Buzzing...' : 'Buzzer Ready';
+        statusDiv.style.color = buzzPending ? '#f39c12' : '#2ecc71';
+        placementDiv.textContent = '';
+        placementDiv.className = 'placement-display';
     });
 
     ws.on('buzz.confirmed', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
         const placementDiv = document.getElementById('placementDisplay');
 
-        // Show confirmation with placement
-        statusDiv.textContent = data.message || '✓ Buzz Registered!';
-        statusDiv.style.color = '#2ecc71';
-        document.getElementById('buzzerButton').disabled = true;
+        buzzPending = false;
+        buzzPendingAt = null;
+        teamInQueue = true;
 
-        // Show placement
+        statusDiv.textContent = data.message || 'Buzz registered';
+        statusDiv.style.color = '#2ecc71';
+
         if (data.placement) {
             const suffix = data.placement === 1 ? 'st' : data.placement === 2 ? 'nd' : data.placement === 3 ? 'rd' : 'th';
             placementDiv.textContent = `You are ${data.placement}${suffix} (${data.total_buzzers} total)`;
@@ -357,15 +240,24 @@ function connectWebSocket() {
         }
     });
 
-    ws.on('buzzer.cleared', (data) => {
-        // Re-enable buzzer when queue is cleared
+    ws.on('buzz.rejected', (data) => {
         const statusDiv = document.getElementById('buzzerStatus');
-        const buzzerButton = document.getElementById('buzzerButton');
+        buzzPending = false;
+        buzzPendingAt = null;
+        statusDiv.textContent = data.reason || 'Buzz rejected';
+        statusDiv.style.color = '#e74c3c';
+    });
+
+    ws.on('buzzer.cleared', () => {
+        const statusDiv = document.getElementById('buzzerStatus');
         const placementDiv = document.getElementById('placementDisplay');
 
-        statusDiv.textContent = 'Ready';
-        statusDiv.style.color = '#27ae60';
-        buzzerButton.disabled = false;
+        teamInQueue = false;
+        buzzPending = false;
+        buzzPendingAt = null;
+
+        statusDiv.textContent = buzzerLocked ? 'Buzzer cooling down' : 'Buzzer Ready';
+        statusDiv.style.color = buzzerLocked ? '#f39c12' : '#2ecc71';
         placementDiv.textContent = '';
         placementDiv.className = 'placement-display';
     });
@@ -373,20 +265,53 @@ function connectWebSocket() {
     ws.connect();
 }
 
+function isBuzzerKey(event) {
+    if (event.key >= '1' && event.key <= '9') {
+        return true;
+    }
+    if (event.code && event.code.startsWith('Numpad')) {
+        const digit = event.code.replace('Numpad', '');
+        return digit >= '1' && digit <= '9';
+    }
+    return false;
+}
+
+function handleKeydown(event) {
+    if (event.repeat) {
+        return;
+    }
+    if (!isBuzzerKey(event)) {
+        return;
+    }
+    if (buzzerLocked || teamInQueue || buzzPending) {
+        return;
+    }
+
+    event.preventDefault();
+    pressBuzzer();
+}
+
 async function pressBuzzer() {
     try {
-        // Send buzz via WebSocket
+        if (buzzerLocked || teamInQueue || buzzPending) {
+            return;
+        }
+
+        buzzPending = true;
+        buzzPendingAt = Date.now();
+        const statusDiv = document.getElementById('buzzerStatus');
+        statusDiv.textContent = 'Buzzing...';
+        statusDiv.style.color = '#f39c12';
+
         if (ws && ws.ws && ws.ws.readyState === WebSocket.OPEN) {
             ws.send({
                 action: 'buzz',
                 device_id: deviceId
             });
         }
-
-        // Disable button immediately to prevent double-clicks
-        document.getElementById('buzzerButton').disabled = true;
-        document.getElementById('buzzerStatus').textContent = 'Buzzing...';
     } catch (error) {
+        buzzPending = false;
+        buzzPendingAt = null;
         showAlert('Error sending buzz: ' + error.message, 'error');
     }
 }
@@ -399,7 +324,6 @@ function logout() {
     window.location.href = '/';
 }
 
-// Initialize on load
 window.addEventListener('load', init);
 </script>
 {% endblock %}

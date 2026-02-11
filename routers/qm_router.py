@@ -302,7 +302,8 @@ async def toggle_buzzer_lock(
     buzzer_key = f"buzzer:lock:{session_id}"
 
     if locked:
-        await r.set(buzzer_key, "1")
+        # Auto-unlock after 1 second to remove manual unlock requirement
+        await r.set(buzzer_key, "1", ex=1)
     else:
         await r.delete(buzzer_key)
         # Also clear buzzer queue

@@ -39,7 +39,7 @@
         <div class="card">
             <h2>Buzzer Control</h2>
             <div class="control-buttons">
-                <button id="buzzerLockBtn" class="btn btn-success" onclick="toggleBuzzerLock()">Unlock Buzzers</button>
+                <button id="buzzerLockBtn" class="btn btn-warning" onclick="toggleBuzzerLock()">Cooldown (1s)</button>
                 <button class="btn btn-warning" onclick="clearBuzzerQueue()">Clear Queue</button>
             </div>
             <div id="buzzerQueue" class="buzzer-queue"></div>
@@ -56,7 +56,7 @@
             <h2>📖 Quick Guide</h2>
             <div class="help-content">
                 <p><strong>Timer:</strong> Set duration and start when question is displayed. Pause/Reset as needed.</p>
-                <p><strong>Buzzers:</strong> Unlock when ready for teams to buzz. Lock to prevent buzzing. Clear queue after each question.</p>
+                <p><strong>Buzzers:</strong> Buzzers auto-unlock after 1 second. Use Clear Queue after each question.</p>
                 <p><strong>Scores:</strong> Use quick buttons (+10, +5, +1, -1, -5, -10) or enter custom values. Undo last change if needed.</p>
                 <p><strong>Note:</strong> Slide navigation is handled by the Presenter. Focus on managing game flow!</p>
             </div>
@@ -299,7 +299,6 @@
 <script>
 let sessionId = null;
 let ws = null;
-let buzzerLocked = false;
 
 async function init() {
     debug('QM Dashboard: Initializing...');
@@ -456,17 +455,20 @@ async function resetTimer() {
 }
 
 async function toggleBuzzerLock() {
-    buzzerLocked = !buzzerLocked;
-    debug('QM Dashboard: toggleBuzzerLock clicked, new state:', buzzerLocked);
+    debug('QM Dashboard: toggleBuzzerLock clicked (1s cooldown)');
     try {
         // Send locked as query parameter, not in body
-        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock?locked=${buzzerLocked}`, {
+        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock?locked=true`, {
             method: 'POST'
         });
         const btn = document.getElementById('buzzerLockBtn');
-        btn.textContent = buzzerLocked ? 'Unlock Buzzers' : 'Lock Buzzers';
-        btn.className = buzzerLocked ? 'btn btn-success' : 'btn btn-danger';
-        debug('QM Dashboard: Buzzer lock toggled successfully');
+        if (btn) {
+            btn.disabled = true;
+            setTimeout(() => {
+                btn.disabled = false;
+            }, 1200);
+        }
+        debug('QM Dashboard: Buzzer cooldown triggered');
     } catch (error) {
         debugError('QM Dashboard: toggleBuzzerLock error:', error);
         showAlert('Error: ' + error.message, 'error');
@@ -475,9 +477,21 @@ async function toggleBuzzerLock() {
 
 async function clearBuzzerQueue() {
     debug('QM Dashboard: clearBuzzerQueue clicked');
-    await toggleBuzzerLock();
-    document.getElementById('buzzerQueue').innerHTML = '';
-    debug('QM Dashboard: Buzzer queue cleared');
+    try {
+        await apiRequest(`/qm/sessions/${sessionId}/buzzer/lock?locked=false`, {
+            method: 'POST'
+        });
+        const btn = document.getElementById('buzzerLockBtn');
+        if (btn) {
+            btn.textContent = 'Cooldown (1s)';
+            btn.className = 'btn btn-warning';
+        }
+        document.getElementById('buzzerQueue').innerHTML = '';
+        debug('QM Dashboard: Buzzer queue cleared');
+    } catch (error) {
+        debugError('QM Dashboard: clearBuzzerQueue error:', error);
+        showAlert('Error: ' + error.message, 'error');
+    }
 }
 
 function displayBuzzerQueue(queue) {

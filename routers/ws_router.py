@@ -608,17 +608,8 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
                 r = await redis.from_url(settings.redis_url, decode_responses=True)
 
                 try:
-                    # Check if buzzers are locked
+                    # Enforce 1-second cooldown between accepted buzzes (auto-unlock)
                     buzzer_lock_key = f"buzzer:lock:{session_id}"
-                    is_locked = await r.get(buzzer_lock_key)
-
-                    if is_locked:
-                        # Buzzers are locked, reject the buzz
-                        await websocket.send_json({
-                            "event": "buzz.rejected",
-                            "reason": "Buzzers are locked"
-                        })
-                        continue
 
                     # Check if team already buzzed
                     buzzer_queue_key = f"buzzer:{session_id}"
@@ -641,8 +632,27 @@ async def websocket_team(websocket: WebSocket, session_id: int, token: str = Que
                         })
                         continue
 
+                    # Acquire cooldown lock (1 second) to auto-unlock after press
+                    lock_acquired = await r.set(buzzer_lock_key, "1", nx=True, ex=1)
+                    if not lock_acquired:
+                        ttl = await r.ttl(buzzer_lock_key)
+                        if ttl is None or ttl < 0:
+                            await r.expire(buzzer_lock_key, 1)
+                        await websocket.send_json({
+                            "event": "buzz.rejected",
+                            "reason": "Buzzer cooling down"
+                        })
+                        continue
+
                     # Add to buzzer queue using sorted set (timestamp as score for ordering)
-                    await r.zadd(buzzer_queue_key, {member_key: timestamp_score})
+                    added = await r.zadd(buzzer_queue_key, {member_key: timestamp_score}, nx=True)
+                    if not added:
+                        await r.delete(buzzer_lock_key)
+                        await websocket.send_json({
+                            "event": "buzz.rejected",
+                            "reason": "Already buzzed"
+                        })
+                        continue
 
                     # Get placement (rank in the queue)
                     placement = await r.zrank(buzzer_queue_key, member_key)
