@@ -8,6 +8,9 @@
         <!-- Side Panel (Left) -->
         <div class="side-panel">
             <h1 id="bannerText" class="banner-text-hidden">AISMOC 2026 QUIZ</h1>
+            <div class="sound-control">
+                <button id="enableSoundBtn" class="enable-sound-btn" type="button">Enable Buzzer Sound</button>
+            </div>
 
             <!-- Timer -->
             <div class="timer-card">
@@ -142,6 +145,21 @@
         background: #fff;
         overflow: hidden;
         min-height: 0;
+    }
+
+    .sound-control {
+        flex-shrink: 0;
+    }
+
+    .enable-sound-btn {
+        width: 100%;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #1f2937;
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
     }
 
     .timer-card,
@@ -321,11 +339,78 @@ let lastInboundBytes = null;
 let lastInboundTimestamp = null;
 let pendingLivekitToken = null;
 let pendingLivekitUrl = null;
+let buzzerSound = null;
+let lastFirstBuzzKey = null;
 const displayId = 'display_' + Math.random().toString(36).substr(2, 9);
 
 async function loadDisplayMode() {
     // Presenter rendering is intentionally disabled for main display.
     displayMode = 'png_slides';
+}
+
+function initBuzzerSound() {
+    buzzerSound = new Audio('/media/freesound_community-error-83494.mp3');
+    buzzerSound.preload = 'auto';
+    buzzerSound.volume = 1.0;
+
+    const btn = document.getElementById('enableSoundBtn');
+    if (btn) {
+        btn.addEventListener('click', () => {
+            void enableBuzzerSound();
+        });
+    }
+
+    window.addEventListener('pointerdown', () => {
+        void enableBuzzerSound();
+    }, { once: true });
+}
+
+async function enableBuzzerSound() {
+    if (!buzzerSound) {
+        return;
+    }
+
+    try {
+        const originalVolume = buzzerSound.volume;
+        buzzerSound.volume = 0;
+        buzzerSound.currentTime = 0;
+        await buzzerSound.play();
+        buzzerSound.pause();
+        buzzerSound.currentTime = 0;
+        buzzerSound.volume = originalVolume;
+
+        const btn = document.getElementById('enableSoundBtn');
+        if (btn) {
+            btn.style.display = 'none';
+        }
+    } catch (error) {
+        const btn = document.getElementById('enableSoundBtn');
+        if (btn) {
+            btn.style.display = 'block';
+        }
+    }
+}
+
+async function playFirstBuzzerSound(eventData) {
+    if (!eventData || eventData.placement !== 1 || !buzzerSound) {
+        return;
+    }
+
+    const key = `${eventData.team_id || 'team'}:${eventData.timestamp || ''}`;
+    if (key === lastFirstBuzzKey) {
+        return;
+    }
+    lastFirstBuzzKey = key;
+
+    try {
+        buzzerSound.currentTime = 0;
+        await buzzerSound.play();
+    } catch (error) {
+        const btn = document.getElementById('enableSoundBtn');
+        if (btn) {
+            btn.style.display = 'block';
+        }
+    }
 }
 
 function normalizeStats(reports) {
@@ -500,6 +585,7 @@ function stopLiveKit() {
 }
 
 async function init() {
+    initBuzzerSound();
     // Load display mode setting
     await loadDisplayMode();
     // Get session ID from URL or default to 1
@@ -627,6 +713,7 @@ function connectWebSocket() {
 
                 case 'buzzer.update':
                 case 'buzzer.results':
+                    void playFirstBuzzerSound(data);
                     apiRequest(`/display/sessions/${sessionId}/snapshot`)
                         .then(snapshot => updateBuzzerQueue(snapshot.buzzer_queue));
                     break;

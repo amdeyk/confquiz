@@ -358,9 +358,22 @@ function connectWebSocket() {
         document.getElementById('timerValue').textContent = formatTime(data.remaining_ms);
     });
 
-    ws.on('buzzer.queue', (data) => {
-        debug('QM Dashboard: Buzzer queue update:', data.queue);
+    ws.on('buzzer.status', (data) => {
+        debug('QM Dashboard: Buzzer status update:', data.queue);
         displayBuzzerQueue(data.queue);
+    });
+
+    ws.on('buzzer.update', async () => {
+        try {
+            const snapshot = await apiRequest(`/display/sessions/${sessionId}/snapshot`);
+            displayBuzzerQueue(snapshot.buzzer_queue || []);
+        } catch (error) {
+            debugError('QM Dashboard: buzzer.update refresh failed:', error);
+        }
+    });
+
+    ws.on('buzzer.cleared', () => {
+        displayBuzzerQueue([]);
     });
 
     ws.on('score.status', (data) => {

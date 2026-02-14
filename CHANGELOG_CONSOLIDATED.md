@@ -29,6 +29,27 @@ Files changed:
 Files changed:
 - templates/display.html
 
+### Buzzer Hair-Trigger Queue Fix (No Per-Buzz Cooldown)
+- Removed per-buzz 1-second cooldown from WebSocket team buzz handling.
+- Removed per-buzz 1-second cooldown from HTTP fallback buzz handling.
+- Kept explicit buzzer lock behavior (QM lock key still blocks buzzes when active).
+- Updated QM dashboard WebSocket handling to refresh queue immediately on `buzzer.update`.
+- Result: multiple teams can buzz in rapid succession and get queued immediately.
+
+Files changed:
+- routers/ws_router.py
+- routers/team_router.py
+- templates/qm_dashboard.html
+
+### Main Display - First Buzz Audio Alert
+- Added first-buzz audio playback on main display when `placement === 1`.
+- Wired display to play media file `/media/freesound_community-error-83494.mp3`.
+- Added `Enable Buzzer Sound` button to handle browser autoplay restrictions.
+- Added replay protection so the same first-buzz event does not re-trigger duplicate sound.
+
+Files changed:
+- templates/display.html
+
 ## 2026-02-11
 
 ### Team Interface - Buzzer Round Keypad
