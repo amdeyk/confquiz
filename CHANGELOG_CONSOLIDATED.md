@@ -1,5 +1,34 @@
 # Consolidated Change Log
 
+## 2026-02-14
+
+### Main Display - Presenter View Disabled and Left Rail Layout
+- Disabled presenter/screen-share rendering on the main display page.
+- Forced display mode handling on main display to stay `png_slides` (screen-share view ignored on this page).
+- Kept timer, score table, and buzzer queue update flows unchanged.
+- Changed display layout so the status panel is on the **left** and constrained to **18%** width.
+- Main display area now stays blank and white for the remaining **82%** of width.
+- Set main display background to pure white.
+
+Files changed:
+- templates/display.html
+
+### Main Display - Left Rail Density Update
+- Moved the buzzer queue card above the score card so buzzer updates appear higher on the screen.
+- Reduced spacing/font sizes in the left rail to improve visibility for larger lists.
+- Updated left rail card sizing so both sections can better show up to 9 teams and up to 9 buzzer entries.
+- Kept all buzzer/score/timer update functionality unchanged.
+
+Files changed:
+- templates/display.html
+
+### Main Display - Panel Order Adjustment
+- Restored left rail order to: Timer -> Scores -> Buzzer Queue.
+- Kept compact/dense styling improvements from the previous update.
+
+Files changed:
+- templates/display.html
+
 ## 2026-02-11
 
 ### Team Interface - Buzzer Round Keypad
